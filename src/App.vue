@@ -7,8 +7,8 @@
           <span class="brand-text">案件別収益（P/L）分析</span>
         </div>
         <nav class="menu-links">
-          <RouterLink class="menu-link" :class="{ 'menu-link-active': !isMasterPage }" to="/">案件</RouterLink>
-          <RouterLink class="menu-link" to="/">ダッシュボード</RouterLink>
+          <RouterLink class="menu-link" :class="{ 'menu-link-active': isProjectPage }" to="/">案件</RouterLink>
+          <RouterLink class="menu-link" :class="{ 'menu-link-active': isDashboardPage }" to="/dashboard">ダッシュボード</RouterLink>
           <RouterLink class="menu-link" to="/">従業員</RouterLink>
           <RouterLink class="menu-link" to="/">レポート</RouterLink>
           <RouterLink class="menu-link" to="/">設定</RouterLink>
@@ -28,6 +28,8 @@ import { computed } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 
 const route = useRoute()
+const isProjectPage = computed(() => route.path === '/')
+const isDashboardPage = computed(() => route.path.startsWith('/dashboard'))
 const isMasterPage = computed(() => route.path.startsWith('/master-data'))
 </script>
 
