@@ -243,8 +243,19 @@ interface Assignment { projectId: string; userId: string; defaultUnitPrice: numb
 interface MonthDef { key: string; label: string; month: number }
 interface Expense { id: string; month: string; name: string; amount: number; projectIds: string[] }
 interface Adjustment { id: string; userId: string; projectId: string; fromMonth: string; toMonth: string; amount: number; memo: string }
+interface PersistedBillingAdjustment {
+  userId: string
+  userName: string
+  projectId: string
+  projectName: string
+  fromMonth: string
+  toMonth: string
+  amount: number
+  memo: string
+}
 
 const formatYen = (v: number) => new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY', maximumFractionDigits: 0 }).format(Number(v) || 0)
+const BILLING_ADJUSTMENTS_STORAGE_KEY = 'proto.billing-adjustments.v1'
 
 const monthMaster: MonthDef[] = [
   { key: '2025-08', label: '2025年8月', month: 8 },
@@ -471,6 +482,7 @@ const toast = reactive({ show: false, type: 'success' as 'success' | 'error', me
 
 const errors = reactive<Record<string, string>>({})
 const dirty = ref(false)
+let skipDirtyTracking = true
 
 const userModal = reactive({ open: false, editingIndex: null as number | null, form: { name: '', email: '', role: 'member' as UserRole } })
 const projectModalOpen = ref(false)
@@ -487,6 +499,10 @@ const errorClass = (key: string) => (errors[key] ? 'border-red-500' : '')
 
 function userNameById(userId: string) {
   return users.find((u) => u.id === userId)?.name ?? userId
+}
+
+function projectNameById(projectId: string) {
+  return projects.find((p) => p.id === projectId)?.name ?? projectId
 }
 
 function openUserModal(index?: number) {
@@ -645,6 +661,68 @@ function removeAdjustment(index: number) {
   markDirty()
 }
 
+const toPersistedBillingAdjustments = (): PersistedBillingAdjustment[] => {
+  return adjustments.map((adjustment) => ({
+    userId: adjustment.userId,
+    userName: userNameById(adjustment.userId),
+    projectId: adjustment.projectId,
+    projectName: projectNameById(adjustment.projectId),
+    fromMonth: adjustment.fromMonth,
+    toMonth: adjustment.toMonth,
+    amount: Number(adjustment.amount) || 0,
+    memo: adjustment.memo
+  }))
+}
+
+function persistBillingAdjustments() {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(BILLING_ADJUSTMENTS_STORAGE_KEY, JSON.stringify(toPersistedBillingAdjustments()))
+  } catch {
+    // no-op
+  }
+}
+
+function loadBillingAdjustments() {
+  if (typeof window === 'undefined') return
+  try {
+    const raw = window.localStorage.getItem(BILLING_ADJUSTMENTS_STORAGE_KEY)
+    if (!raw) return
+
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return
+
+    const loaded = parsed.reduce<Adjustment[]>((acc, item, index) => {
+      if (!item || typeof item !== 'object') return acc
+      const candidate = item as Partial<Adjustment> & Partial<PersistedBillingAdjustment>
+      const userId = typeof candidate.userId === 'string' ? candidate.userId : ''
+      const projectId = typeof candidate.projectId === 'string' ? candidate.projectId : ''
+      const fromMonth = typeof candidate.fromMonth === 'string' ? candidate.fromMonth : ''
+      const toMonth = typeof candidate.toMonth === 'string' ? candidate.toMonth : ''
+      const memo = typeof candidate.memo === 'string' ? candidate.memo : ''
+      const amount = Number(candidate.amount)
+
+      if (!userId || !projectId || !fromMonth || !toMonth || !memo || Number.isNaN(amount)) return acc
+
+      acc.push({
+        id: typeof candidate.id === 'string' ? candidate.id : `a_imported_${index + 1}`,
+        userId,
+        projectId,
+        fromMonth,
+        toMonth,
+        amount,
+        memo
+      })
+      return acc
+    }, [])
+
+    if (loaded.length === 0) return
+    adjustments.splice(0, adjustments.length, ...loaded)
+  } catch {
+    // no-op
+  }
+}
+
 function validateSection(section: string) {
   clearErrors(section)
   if (section === 's1') {
@@ -707,6 +785,9 @@ function validateSection(section: string) {
 function saveSection(section: string) {
   const ok = validateSection(section)
   if (!ok) return
+  if (section === 's10') {
+    persistBillingAdjustments()
+  }
   showToast('success', `${section.toUpperCase()} を保存しました`)
   dirty.value = false
 }
@@ -729,9 +810,16 @@ onBeforeRouteLeave((_to, _from, next) => {
   }
 })
 
-onMounted(() => window.addEventListener('beforeunload', beforeUnload))
+onMounted(() => {
+  loadBillingAdjustments()
+  window.addEventListener('beforeunload', beforeUnload)
+  window.setTimeout(() => {
+    skipDirtyTracking = false
+  }, 0)
+})
 onUnmounted(() => window.removeEventListener('beforeunload', beforeUnload))
 watch([users, projects, assignments, expenses, adjustments, accountingRows, memberCostRows, officerCostRows], () => {
+  if (skipDirtyTracking) return
   markDirty()
 }, { deep: true })
 </script>
