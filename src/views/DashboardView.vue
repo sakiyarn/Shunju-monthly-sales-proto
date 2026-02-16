@@ -116,18 +116,56 @@
       </section>
 
       <section v-else-if="activeTab === 'memberSales'" class="tab-panel">
-        <div class="panel-header">
+        <div class="panel-header panel-header-split">
           <h2>メンバー別売上内訳</h2>
+          <div class="member-sales-header-controls">
+            <div class="member-sales-filter-group" aria-label="メンバー別売上内訳のメンバーフィルタ">
+              <span class="work-hours-filter-label">メンバー</span>
+              <div class="member-sales-filter-buttons">
+                <button
+                  v-for="memberName in allPeople"
+                  :key="`member-sales-filter-${memberName}`"
+                  class="work-hours-filter-btn"
+                  :class="{ 'work-hours-member-filter-btn-active': isMemberSalesMemberSelected(memberName) }"
+                  type="button"
+                  @click="toggleMemberSalesMember(memberName)"
+                >
+                  {{ memberName }}
+                </button>
+              </div>
+            </div>
+
+            <div class="member-sales-scale-control" aria-label="メンバー別売上内訳の表示倍率">
+              <span>表示倍率</span>
+              <div class="member-sales-scale-buttons">
+                <button
+                  v-for="scale in memberSalesScaleOptions"
+                  :key="`member-sales-scale-${scale}`"
+                  class="member-sales-scale-btn"
+                  :class="{ 'member-sales-scale-btn-active': memberSalesScale === scale }"
+                  type="button"
+                  @click="setMemberSalesScale(scale)"
+                >
+                  {{ scale }}%
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="ag-theme-quartz grid-shell grid-shell-lg">
-          <AgGridVue
-            class="h-full w-full"
-            :columnDefs="memberSalesColumnDefs"
-            :rowData="memberSalesRows"
-            :defaultColDef="readOnlyColDef"
-            :animateRows="false"
-            :getRowClass="getMemberSalesRowClass"
-          />
+        <div class="member-sales-stage">
+          <div class="member-sales-zoom" :style="memberSalesScaleStyle">
+            <div class="ag-theme-quartz grid-shell grid-shell-member-sales">
+              <AgGridVue
+                class="h-full w-full"
+                :columnDefs="memberSalesColumnDefs"
+                :rowData="filteredMemberSalesRows"
+                :defaultColDef="readOnlyColDef"
+                :animateRows="false"
+                :tooltipShowDelay="120"
+                :getRowClass="getMemberSalesRowClass"
+              />
+            </div>
+          </div>
         </div>
       </section>
 
@@ -137,16 +175,74 @@
         </div>
         <div class="chart-layout">
           <article class="chart-card chart-card-large">
-            <h3>月次売上推移（積み上げ）</h3>
+            <div class="chart-card-head chart-card-head-wrap">
+              <h3>月次売上推移（積み上げ）</h3>
+              <div class="member-chart-controls" aria-label="月次売上推移の表示期間設定">
+                <select v-model="memberChartRangeMode" class="period-select" aria-label="表示期間モード">
+                  <option value="period">期で表示</option>
+                  <option value="year">年度で表示</option>
+                  <option value="custom">月範囲で表示</option>
+                </select>
+
+                <select
+                  v-if="memberChartRangeMode === 'period'"
+                  v-model.number="selectedMemberChartPeriod"
+                  class="period-select"
+                  aria-label="期選択"
+                >
+                  <option
+                    v-for="option in memberChartPeriodOptions"
+                    :key="`member-chart-period-${option.value}`"
+                    :value="option.value"
+                    :disabled="!option.available"
+                  >
+                    {{ option.label }}{{ option.available ? '' : '（データなし）' }}
+                  </option>
+                </select>
+
+                <select
+                  v-else-if="memberChartRangeMode === 'year'"
+                  v-model.number="selectedMemberChartYear"
+                  class="period-select"
+                  aria-label="年度選択"
+                >
+                  <option v-for="year in memberChartYearOptions" :key="`member-chart-year-${year}`" :value="year">
+                    {{ year }}年度
+                  </option>
+                </select>
+
+                <div v-else class="member-chart-custom-range">
+                  <select v-model="memberChartRangeFrom" class="period-select" aria-label="表示開始月">
+                    <option v-for="month in allMonths" :key="`member-chart-from-${month.key}`" :value="month.key">
+                      {{ month.label }}
+                    </option>
+                  </select>
+                  <span class="member-chart-range-separator">〜</span>
+                  <select v-model="memberChartRangeTo" class="period-select" aria-label="表示終了月">
+                    <option v-for="month in allMonths" :key="`member-chart-to-${month.key}`" :value="month.key">
+                      {{ month.label }}
+                    </option>
+                  </select>
+                </div>
+              </div>
+            </div>
             <div ref="memberStackedChartEl" class="chart-canvas chart-canvas-large" />
           </article>
 
           <article class="chart-card chart-card-small">
-            <div class="chart-card-head">
+            <div class="chart-card-head chart-card-head-wrap">
               <h3>選択月の売上構成比</h3>
-              <select v-model="selectedDonutMonth" class="period-select donut-select" aria-label="ドーナツ対象月選択">
-                <option v-for="month in visibleMonths" :key="`donut-${month.key}`" :value="month.key">{{ month.label }}</option>
-              </select>
+              <div class="member-chart-controls" aria-label="売上構成比の表示設定">
+                <select v-model="selectedDonutMonth" class="period-select donut-select" aria-label="ドーナツ対象月選択">
+                  <option v-for="month in memberChartVisibleMonths" :key="`donut-${month.key}`" :value="month.key">
+                    {{ month.label }}
+                  </option>
+                </select>
+                <select v-model="memberDonutSortMode" class="period-select" aria-label="売上構成比の並び順">
+                  <option value="shareDesc">割合が大きい順</option>
+                  <option value="roleOrder">役職順（代表A/B優先）</option>
+                </select>
+              </div>
             </div>
             <div ref="memberDonutChartEl" class="chart-canvas chart-canvas-small" />
           </article>
@@ -186,6 +282,19 @@
           <div class="tracker-head">
             <h3>{{ halfYearRangeLabel }}</h3>
             <span class="tracker-badge" :class="trackerBadgeClass">{{ trackerBadgeLabel }}</span>
+          </div>
+
+          <div class="tracker-period-controls" aria-label="半期切替">
+            <button
+              v-for="period in halfYearPeriods"
+              :key="`tracker-period-${period.id}`"
+              class="tracker-period-btn"
+              :class="{ 'tracker-period-btn-active': selectedHalfYearPeriodId === period.id }"
+              type="button"
+              @click="selectedHalfYearPeriodId = period.id"
+            >
+              {{ period.label }}
+            </button>
           </div>
 
           <div class="tracker-meter-wrap">
@@ -262,6 +371,8 @@ import 'ag-grid-community/styles/ag-theme-quartz.css'
 type DashboardTabId = 'workHours' | 'budget' | 'memberSales' | 'memberChart' | 'profitTracker'
 type WorkHoursRowType = 'projectHeader' | 'member' | 'subtotal'
 type MemberSalesRowType = 'memberHeader' | 'project' | 'subtotal'
+type MemberChartRangeMode = 'period' | 'year' | 'custom'
+type MemberDonutSortMode = 'shareDesc' | 'roleOrder'
 
 interface MonthDef {
   key: string
@@ -303,11 +414,30 @@ interface SalesCellDetail {
   totalRevenue: number
 }
 
+interface PersistedBillingAdjustment {
+  userId?: string
+  userName?: string
+  projectId?: string
+  projectName?: string
+  fromMonth?: string
+  toMonth?: string
+  amount?: number
+  memo?: string
+}
+
 interface ProfitMonthData {
   key: string
   sales: number
   profit: number
   previousYearMargin: number
+}
+
+interface HalfYearPeriod {
+  id: string
+  label: string
+  startKey: string
+  endKey: string
+  monthKeys: string[]
 }
 
 const tabs: Array<{ id: DashboardTabId; label: string }> = [
@@ -378,6 +508,49 @@ const projects = ['案件001', '案件002', '案件003']
 const members = ['三千人将A', '千人将A', '三百人将A', '百人将A', '什長A', '什長B', '什長C', '什長D']
 const executives = ['代表A', '代表B']
 const allPeople = [...members, ...executives]
+const allMonthIndexByKey = new Map(allMonths.map((month, index) => [month.key, index]))
+const memberRoleOrder = ['代表A', '代表B', '三千人将A', '千人将A', '三百人将A', '百人将A', '什長A', '什長B', '什長C', '什長D']
+const memberRoleOrderIndex = new Map(memberRoleOrder.map((name, index) => [name, index]))
+const getMemberRoleRank = (name: string) => memberRoleOrderIndex.get(name) ?? memberRoleOrder.length
+
+const memberChartRangeMode = ref<MemberChartRangeMode>('period')
+const memberChartPeriodOptions = computed(() => {
+  return [1, 2, 3, 4].map((periodNumber) => {
+    const periodLabel = `第${periodNumber}期`
+    return {
+      value: periodNumber,
+      label: periodLabel,
+      available: allMonths.some((month) => month.period === periodLabel)
+    }
+  })
+})
+const initialMemberChartPeriod = memberChartPeriodOptions.value.find((option) => option.available)?.value ?? 1
+const selectedMemberChartPeriod = ref<number>(initialMemberChartPeriod)
+const memberChartYearOptions = [...new Set(allMonths.map((month) => month.year))].sort((a, b) => a - b)
+const selectedMemberChartYear = ref<number>(memberChartYearOptions[0] ?? allMonths[0].year)
+const memberChartRangeFrom = ref<string>(allMonths[0].key)
+const memberChartRangeTo = ref<string>(allMonths[allMonths.length - 1].key)
+const memberDonutSortMode = ref<MemberDonutSortMode>('shareDesc')
+
+const memberChartVisibleMonths = computed<MonthDef[]>(() => {
+  if (memberChartRangeMode.value === 'period') {
+    const periodLabel = `第${selectedMemberChartPeriod.value}期`
+    return allMonths.filter((month) => month.period === periodLabel)
+  }
+
+  if (memberChartRangeMode.value === 'year') {
+    return allMonths.filter((month) => month.year === selectedMemberChartYear.value)
+  }
+
+  const fromIndex = allMonthIndexByKey.get(memberChartRangeFrom.value) ?? -1
+  const toIndex = allMonthIndexByKey.get(memberChartRangeTo.value) ?? -1
+  if (fromIndex < 0 || toIndex < 0) return allMonths
+
+  const start = Math.min(fromIndex, toIndex)
+  const end = Math.max(fromIndex, toIndex)
+  return allMonths.slice(start, end + 1)
+})
+const memberChartVisibleMonthKeys = computed(() => memberChartVisibleMonths.value.map((month) => month.key))
 
 const projectParticipants: Record<string, string[]> = {
   案件001: ['三千人将A', '千人将A', '三百人将A', '百人将A', '什長A', '代表A'],
@@ -410,15 +583,39 @@ const workHoursScaleOptions = [100, 90, 80, 70]
 const workHoursScale = ref(100)
 const workHoursScaleMenuOpen = ref(false)
 const workHoursScaleMenuWrapRef = ref<HTMLElement | null>(null)
+const memberSalesScaleOptions = [100, 90, 80, 70]
+const memberSalesScale = ref(100)
+const memberSalesMemberFilter = ref<Record<string, boolean>>(
+  allPeople.reduce<Record<string, boolean>>((acc, memberName) => {
+    acc[memberName] = false
+    return acc
+  }, {})
+)
 const setWorkHoursScale = (scale: number) => {
   workHoursScale.value = scale
   workHoursScaleMenuOpen.value = false
+}
+const setMemberSalesScale = (scale: number) => {
+  memberSalesScale.value = scale
+}
+const isMemberSalesMemberSelected = (memberName: string) => Boolean(memberSalesMemberFilter.value[memberName])
+const toggleMemberSalesMember = (memberName: string) => {
+  memberSalesMemberFilter.value[memberName] = !memberSalesMemberFilter.value[memberName]
 }
 const workHoursScaleStyle = computed(() => {
   const ratio = workHoursScale.value / 100
   return {
     transform: `scale(${ratio})`,
     transformOrigin: 'top left'
+  }
+})
+const memberSalesScaleStyle = computed(() => {
+  const ratio = memberSalesScale.value / 100
+  return {
+    transform: `scale(${ratio})`,
+    transformOrigin: 'top left',
+    width: `${100 / ratio}%`,
+    height: `${100 / ratio}%`
   }
 })
 const workHoursProjectVisible = ref<Record<string, boolean>>(
@@ -654,9 +851,55 @@ const getBudgetRowClass = (params: RowClassParams<BudgetRow>) => {
   return ''
 }
 
-const salesAdjustmentKey = '三千人将A|案件001|2026-01'
+const BILLING_ADJUSTMENTS_STORAGE_KEY = 'proto.billing-adjustments.v1'
+const salesAdjustmentKey = '三千人将A|案件001|2026-02'
+const resolveIndexFromId = (id: string, prefix: string) => {
+  if (!id.startsWith(prefix)) return -1
+  const numericPart = Number(id.slice(prefix.length))
+  if (Number.isNaN(numericPart)) return -1
+  return numericPart - 1
+}
+const resolveMemberNameForAdjustment = (adjustment: PersistedBillingAdjustment) => {
+  if (typeof adjustment.userName === 'string' && allPeople.includes(adjustment.userName)) return adjustment.userName
+  if (typeof adjustment.userId !== 'string') return ''
+  const memberIndex = resolveIndexFromId(adjustment.userId, 'u')
+  return memberIndex >= 0 && memberIndex < allPeople.length ? allPeople[memberIndex] : ''
+}
+const resolveProjectNameForAdjustment = (adjustment: PersistedBillingAdjustment) => {
+  if (typeof adjustment.projectName === 'string' && projects.includes(adjustment.projectName)) return adjustment.projectName
+  if (typeof adjustment.projectId !== 'string') return ''
+  const projectIndex = resolveIndexFromId(adjustment.projectId, 'p')
+  return projectIndex >= 0 && projectIndex < projects.length ? projects[projectIndex] : ''
+}
+const loadPersistedSalesAdjustments = (): Array<[string, { adjustment: number; memo: string }]> => {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = window.localStorage.getItem(BILLING_ADJUSTMENTS_STORAGE_KEY)
+    if (!raw) return []
+
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+
+    return parsed.reduce<Array<[string, { adjustment: number; memo: string }]>>((acc, item) => {
+      if (!item || typeof item !== 'object') return acc
+      const adjustment = item as PersistedBillingAdjustment
+      const memberName = resolveMemberNameForAdjustment(adjustment)
+      const projectName = resolveProjectNameForAdjustment(adjustment)
+      const monthKey = typeof adjustment.toMonth === 'string' ? adjustment.toMonth : ''
+      const memo = typeof adjustment.memo === 'string' ? adjustment.memo : ''
+      const amount = Number(adjustment.amount)
+
+      if (!memberName || !projectName || !monthKey || !memo || Number.isNaN(amount)) return acc
+      acc.push([`${memberName}|${projectName}|${monthKey}`, { adjustment: amount, memo }])
+      return acc
+    }, [])
+  } catch {
+    return []
+  }
+}
 const salesAdjustments = new Map<string, { adjustment: number; memo: string }>([
-  [salesAdjustmentKey, { adjustment: -55000, memo: '12月分 請求時間誤り修正' }]
+  [salesAdjustmentKey, { adjustment: -18000, memo: '1月分 請求時間誤り修正' }],
+  ...loadPersistedSalesAdjustments()
 ])
 
 const salesCellDetails = new Map<string, SalesCellDetail>()
@@ -687,6 +930,12 @@ allPeople.forEach((person) => {
 
 const getSalesCellDetail = (person: string, project: string, monthKey: string) => {
   return salesCellDetails.get(`${person}|${project}|${monthKey}`)
+}
+const getSalesMemoTooltip = (row: MemberSalesRow | undefined, monthKey: string | undefined) => {
+  if (!row || row.rowType !== 'project' || !monthKey) return ''
+  const detail = getSalesCellDetail(row.memberName, row.displayName, monthKey)
+  if (!detail || detail.adjustment === 0 || !detail.memo) return ''
+  return `${detail.memo} ${formatSignedYen(detail.adjustment)}`
 }
 
 const memberSalesRows = computed<MemberSalesRow[]>(() => {
@@ -736,6 +985,14 @@ const memberSalesRows = computed<MemberSalesRow[]>(() => {
   return rows
 })
 
+const filteredMemberSalesRows = computed<MemberSalesRow[]>(() => {
+  const selectedMembers = allPeople.filter((memberName) => isMemberSalesMemberSelected(memberName))
+  if (selectedMembers.length === 0) return memberSalesRows.value
+
+  const selectedMemberSet = new Set(selectedMembers)
+  return memberSalesRows.value.filter((row) => selectedMemberSet.has(row.memberName))
+})
+
 const createMemberSalesCellRenderer = (params: ICellRendererParams<MemberSalesRow, number | null>) => {
   if (params.value === null || params.value === undefined) return ''
 
@@ -749,13 +1006,14 @@ const createMemberSalesCellRenderer = (params: ICellRendererParams<MemberSalesRo
   const monthKey = params.colDef?.field
   if (!monthKey || params.data?.rowType !== 'project') return wrapper
 
-  const detail = getSalesCellDetail(params.data.memberName, params.data.displayName, monthKey)
-  if (!detail || detail.adjustment === 0 || !detail.memo) return wrapper
+  const memoText = getSalesMemoTooltip(params.data, monthKey)
+  if (!memoText) return wrapper
 
   const memoIcon = document.createElement('span')
   memoIcon.className = 'sales-memo-icon'
   memoIcon.textContent = '📝'
-  memoIcon.title = `${detail.memo} ${formatSignedYen(detail.adjustment)}`
+  memoIcon.title = memoText
+  memoIcon.setAttribute('aria-label', memoText)
   wrapper.appendChild(memoIcon)
 
   return wrapper
@@ -786,6 +1044,10 @@ const memberSalesColumnDefs = computed<Array<ColDef<MemberSalesRow> | ColGroupDe
         return formatYen(Number(params.value))
       },
       cellRenderer: createMemberSalesCellRenderer,
+      tooltipValueGetter: (params) => {
+        const monthKey = params.colDef && 'field' in params.colDef ? params.colDef.field : undefined
+        return getSalesMemoTooltip(params.data, monthKey)
+      },
       cellClass: (params: CellClassParams<MemberSalesRow>) => {
         return params.data?.rowType === 'subtotal' ? 'cell-subtotal' : 'cell-money'
       }
@@ -803,7 +1065,7 @@ const memberMonthSalesTotals = computed(() => {
   const map = new Map<string, number[]>()
 
   allPeople.forEach((person) => {
-    const values = visibleMonths.value.map((month) => {
+    const values = allMonths.map((month) => {
       return projects.reduce((sum, project) => {
         const detail = getSalesCellDetail(person, project, month.key)
         return sum + (detail?.totalRevenue ?? 0)
@@ -817,14 +1079,19 @@ const memberMonthSalesTotals = computed(() => {
 
 const selectedDonutMonth = ref<string>(allMonths[allMonths.length - 1].key)
 
-watch(visibleMonthKeys, (monthKeys) => {
-  if (monthKeys.length === 0) return
-  if (!monthKeys.includes(selectedDonutMonth.value)) {
-    selectedDonutMonth.value = monthKeys[monthKeys.length - 1]
-  }
-})
+watch(
+  memberChartVisibleMonthKeys,
+  (monthKeys) => {
+    if (monthKeys.length === 0) return
+    if (!monthKeys.includes(selectedDonutMonth.value)) {
+      selectedDonutMonth.value = monthKeys[monthKeys.length - 1]
+    }
+  },
+  { immediate: true }
+)
 
 const memberColorPalette = ['#4361ee', '#4cc9f0', '#f72585', '#3a0ca3', '#4895ef', '#b5179e', '#2ec4b6', '#ff9f1c', '#6a4c93', '#80ed99']
+const memberColorByName = new Map(allPeople.map((person, index) => [person, memberColorPalette[index % memberColorPalette.length]]))
 const chartTextColor = '#334155'
 const chartAxisColor = '#94a3b8'
 const chartSplitLineColor = 'rgba(148, 163, 184, 0.28)'
@@ -837,13 +1104,21 @@ let memberStackedChart: echarts.ECharts | null = null
 let memberDonutChart: echarts.ECharts | null = null
 let profitTrendChart: echarts.ECharts | null = null
 
+const ensureChartInstance = (chart: echarts.ECharts | null, el: HTMLDivElement | null) => {
+  if (!el) return chart
+  if (chart && chart.getDom() !== el) {
+    chart.dispose()
+    chart = null
+  }
+  if (!chart) {
+    chart = echarts.init(el)
+  }
+  return chart
+}
+
 const initMemberCharts = () => {
-  if (memberStackedChartEl.value && !memberStackedChart) {
-    memberStackedChart = echarts.init(memberStackedChartEl.value)
-  }
-  if (memberDonutChartEl.value && !memberDonutChart) {
-    memberDonutChart = echarts.init(memberDonutChartEl.value)
-  }
+  memberStackedChart = ensureChartInstance(memberStackedChart, memberStackedChartEl.value)
+  memberDonutChart = ensureChartInstance(memberDonutChart, memberDonutChartEl.value)
 }
 
 const initProfitChart = () => {
@@ -855,14 +1130,58 @@ const initProfitChart = () => {
 const renderMemberCharts = () => {
   if (!memberStackedChart || !memberDonutChart) return
 
-  const monthLabels = visibleMonths.value.map((month) => month.label)
-  const memberSeries = allPeople.map((person, index) => ({
+  const monthsForChart = memberChartVisibleMonths.value
+  const monthLabels = monthsForChart.map((month) => month.label)
+  const monthIndexes = monthsForChart.map((month) => allMonthIndexByKey.get(month.key) ?? -1)
+
+  if (monthLabels.length === 0) {
+    memberStackedChart.setOption({
+      backgroundColor: 'transparent',
+      xAxis: { type: 'category', data: [] },
+      yAxis: { type: 'value' },
+      series: [],
+      graphic: [
+        {
+          type: 'text',
+          left: 'center',
+          top: 'middle',
+          style: {
+            text: '表示対象のデータがありません',
+            fill: chartTextColor,
+            fontSize: 14
+          }
+        }
+      ]
+    }, true)
+    memberDonutChart.setOption({
+      backgroundColor: 'transparent',
+      series: [],
+      graphic: [
+        {
+          type: 'text',
+          left: 'center',
+          top: 'middle',
+          style: {
+            text: '表示対象のデータがありません',
+            fill: chartTextColor,
+            fontSize: 14
+          }
+        }
+      ]
+    }, true)
+    return
+  }
+
+  const memberSeries = allPeople.map((person) => ({
     name: person,
     type: 'bar' as const,
     stack: 'sales',
     emphasis: { focus: 'series' as const },
-    itemStyle: { color: memberColorPalette[index % memberColorPalette.length] },
-    data: memberMonthSalesTotals.value.get(person) ?? []
+    itemStyle: { color: memberColorByName.get(person) ?? '#64748b' },
+    data: monthIndexes.map((monthIndex) => {
+      if (monthIndex < 0) return 0
+      return memberMonthSalesTotals.value.get(person)?.[monthIndex] ?? 0
+    })
   }))
 
   memberStackedChart.setOption({
@@ -899,20 +1218,27 @@ const renderMemberCharts = () => {
       }
     },
     series: memberSeries
-  })
+  }, true)
 
   const donutMonth = selectedDonutMonth.value
-  const donutData = allPeople.map((person, index) => {
+  const donutMonthIndex = allMonthIndexByKey.get(donutMonth) ?? -1
+  const donutData = allPeople.map((person) => {
     const monthValues = memberMonthSalesTotals.value.get(person) ?? []
-    const monthIndex = visibleMonthKeys.value.indexOf(donutMonth)
     return {
       name: person,
-      value: monthIndex >= 0 ? monthValues[monthIndex] : 0,
-      itemStyle: { color: memberColorPalette[index % memberColorPalette.length] }
+      value: donutMonthIndex >= 0 ? monthValues[donutMonthIndex] : 0,
+      itemStyle: { color: memberColorByName.get(person) ?? '#64748b' }
     }
   })
+  const sortedDonutData = [...donutData].sort((left, right) => {
+    if (memberDonutSortMode.value === 'shareDesc') {
+      const valueDiff = Number(right.value) - Number(left.value)
+      if (valueDiff !== 0) return valueDiff
+    }
+    return getMemberRoleRank(left.name) - getMemberRoleRank(right.name)
+  })
 
-  const total = donutData.reduce((sum, item) => sum + Number(item.value), 0)
+  const total = sortedDonutData.reduce((sum, item) => sum + Number(item.value), 0)
 
   memberDonutChart.setOption({
     backgroundColor: 'transparent',
@@ -925,7 +1251,7 @@ const renderMemberCharts = () => {
     title: {
       text: `${formatYen(total)}\n合計`,
       left: 'center',
-      top: '44%',
+      top: '43%',
       textStyle: {
         color: '#0f172a',
         fontSize: 15,
@@ -943,63 +1269,134 @@ const renderMemberCharts = () => {
         name: '売上構成比',
         type: 'pie',
         radius: ['52%', '76%'],
-        center: ['50%', '42%'],
+        center: ['50%', '40%'],
         avoidLabelOverlap: true,
+        minShowLabelAngle: 5,
         label: {
           color: chartTextColor,
-          formatter: '{d}%'
+          fontSize: 11,
+          formatter: (params: { name: string; percent: number }) => `${params.percent.toFixed(1)}% ${params.name}`
         },
         labelLine: {
           lineStyle: {
             color: chartAxisColor
           }
         },
-        data: donutData
+        labelLayout: {
+          hideOverlap: true
+        },
+        data: sortedDonutData
       }
     ]
-  })
+  }, true)
 }
 
-const monthlyProfitData: ProfitMonthData[] = [
-  { key: '2025-08', sales: 2662000, profit: 312000, previousYearMargin: 18.5 },
-  { key: '2025-09', sales: 2107000, profit: 237000, previousYearMargin: 15.2 },
-  { key: '2025-10', sales: 2621000, profit: 311000, previousYearMargin: 20.1 },
-  { key: '2025-11', sales: 2231000, profit: 121000, previousYearMargin: 12.8 },
-  { key: '2025-12', sales: 2729500, profit: 624500, previousYearMargin: 22.0 },
-  { key: '2026-01', sales: 2400000, profit: 650000, previousYearMargin: 22.9 },
-  { key: '2026-02', sales: 2550000, profit: 575000, previousYearMargin: 19.5 }
-]
+const buildMonthKey = (year: number, month: number) => `${year}-${String(month).padStart(2, '0')}`
+const parseMonthKey = (key: string) => {
+  const [yearRaw, monthRaw] = key.split('-')
+  const year = Number(yearRaw)
+  const month = Number(monthRaw)
+  if (Number.isNaN(year) || Number.isNaN(month)) return null
+  return { year, month }
+}
+const formatMonthLabel = (key: string) => {
+  const parsed = parseMonthKey(key)
+  if (!parsed) return key
+  return `${parsed.year}年${parsed.month}月`
+}
+const formatMonthShortLabel = (key: string) => {
+  const parsed = parseMonthKey(key)
+  if (!parsed) return key
+  return `${parsed.month}月`
+}
+const shiftYearInMonthKey = (key: string, yearDiff: number) => {
+  const parsed = parseMonthKey(key)
+  if (!parsed) return key
+  return buildMonthKey(parsed.year + yearDiff, parsed.month)
+}
+const calcProfitMargin = (row?: Pick<ProfitMonthData, 'sales' | 'profit'>) => {
+  if (!row || row.sales === 0) return 0
+  return (row.profit / row.sales) * 100
+}
+const buildSequentialMonthKeys = (startYear: number, startMonth: number, count: number) => {
+  const keys: string[] = []
+  let year = startYear
+  let month = startMonth
+  for (let index = 0; index < count; index += 1) {
+    keys.push(buildMonthKey(year, month))
+    month += 1
+    if (month > 12) {
+      month = 1
+      year += 1
+    }
+  }
+  return keys
+}
+
+const profitMonthKeys = buildSequentialMonthKeys(2024, 8, 24)
+const monthlyProfitData: ProfitMonthData[] = profitMonthKeys.map((key) => {
+  const sales = seededInt(`${key}:profit-sales`, 2000000, 3200000)
+  const marginPercent = seededInt(`${key}:profit-margin`, 10, 28) / 100
+  const previousYearMargin = seededInt(`${key}:profit-prev-margin`, 8, 24)
+  let profit = Math.round(sales * marginPercent)
+
+  // マイナス利益の描画確認用ダミー
+  if (key === '2025-11') {
+    profit = -180000
+  }
+
+  return { key, sales, profit, previousYearMargin }
+})
 
 const monthlyProfitMap = new Map(monthlyProfitData.map((item) => [item.key, item]))
 
+const halfYearPeriods: HalfYearPeriod[] = []
+for (let index = 0; index + 5 < profitMonthKeys.length; index += 6) {
+  const monthKeys = profitMonthKeys.slice(index, index + 6)
+  const startKey = monthKeys[0]
+  const endKey = monthKeys[monthKeys.length - 1]
+  const start = parseMonthKey(startKey)
+  const fiscalYear = start ? (start.month >= 8 ? start.year : start.year - 1) : 0
+  const halfLabel = start && start.month >= 8 ? '上半期' : '下半期'
+  const halfId = halfLabel === '上半期' ? 'h1' : 'h2'
+
+  halfYearPeriods.push({
+    id: `${fiscalYear}-${halfId}`,
+    label: `${fiscalYear}年度${halfLabel}`,
+    startKey,
+    endKey,
+    monthKeys
+  })
+}
+
+const selectedHalfYearPeriodId = ref<string>(halfYearPeriods[halfYearPeriods.length - 1]?.id ?? '')
+const selectedHalfYearPeriod = computed<HalfYearPeriod | null>(() => {
+  return halfYearPeriods.find((period) => period.id === selectedHalfYearPeriodId.value) ?? halfYearPeriods[halfYearPeriods.length - 1] ?? null
+})
+
 const visibleProfitRows = computed(() => {
-  return visibleMonths.value
-    .map((month) => monthlyProfitMap.get(month.key))
+  const period = selectedHalfYearPeriod.value
+  if (!period) return []
+  return period.monthKeys
+    .map((key) => monthlyProfitMap.get(key))
     .filter((item): item is ProfitMonthData => Boolean(item))
 })
 
-const kpiLastMonthLabel = '2026年1月'
-const kpiPreviousMonthLabel = '2025年12月'
-const kpiPreviousYearLabel = '2025年1月'
+const latestProfitRow = monthlyProfitData[monthlyProfitData.length - 1]
+const previousProfitRow = monthlyProfitData[monthlyProfitData.length - 2]
+const previousYearProfitRow = latestProfitRow ? monthlyProfitMap.get(shiftYearInMonthKey(latestProfitRow.key, -1)) : undefined
 
-const kpiLastMonthMargin = (650000 / 2400000) * 100
-const kpiPreviousMonthMargin = (624500 / 2729500) * 100
-const kpiPreviousYearMargin = (480000 / 2100000) * 100
+const kpiLastMonthLabel = latestProfitRow ? formatMonthLabel(latestProfitRow.key) : '-'
+const kpiPreviousMonthLabel = previousProfitRow ? formatMonthLabel(previousProfitRow.key) : '-'
+const kpiPreviousYearLabel = previousYearProfitRow ? formatMonthLabel(previousYearProfitRow.key) : '-'
+
+const kpiLastMonthMargin = calcProfitMargin(latestProfitRow)
+const kpiPreviousMonthMargin = calcProfitMargin(previousProfitRow)
+const kpiPreviousYearMargin = calcProfitMargin(previousYearProfitRow)
 const monthOverMonthDiff = kpiLastMonthMargin - kpiPreviousMonthMargin
 const yearOverYearDiff = kpiLastMonthMargin - kpiPreviousYearMargin
 
-const halfYearKeys = ['2025-08', '2025-09', '2025-10', '2025-11', '2025-12', '2026-01']
-
-const halfYearRows = computed(() => {
-  const baseRows = halfYearKeys
-    .map((key) => monthlyProfitMap.get(key))
-    .filter((item): item is ProfitMonthData => Boolean(item))
-
-  const visibleSet = new Set(visibleMonthKeys.value)
-  const filtered = baseRows.filter((row) => visibleSet.has(row.key))
-
-  return filtered.length > 0 ? filtered : baseRows
-})
+const halfYearRows = computed(() => visibleProfitRows.value)
 
 const halfYearTableRows = computed(() => {
   return halfYearRows.value.map((row) => ({
@@ -1016,15 +1413,9 @@ const halfYearProfitRate = computed(() => {
 })
 
 const halfYearRangeLabel = computed(() => {
-  const first = halfYearRows.value[0]
-  const last = halfYearRows.value[halfYearRows.value.length - 1]
-
-  if (!first || !last) return '2025年8月〜2026年1月（上半期）'
-
-  const firstLabel = monthLookup.get(first.key)?.label ?? first.key
-  const lastLabel = monthLookup.get(last.key)?.label ?? last.key
-  const suffix = halfYearRows.value.length === halfYearKeys.length ? '（上半期）' : '（表示中）'
-  return `${firstLabel}〜${lastLabel}${suffix}`
+  const selectedPeriod = selectedHalfYearPeriod.value
+  if (!selectedPeriod) return '半期データ'
+  return `${formatMonthLabel(selectedPeriod.startKey)}〜${formatMonthLabel(selectedPeriod.endKey)}（${selectedPeriod.label}）`
 })
 
 const bonusTargetRate = 25
@@ -1052,21 +1443,27 @@ const trackerBadgeLabel = computed(() => {
 })
 
 const monthLabelForTable = (key: string) => {
-  const month = monthLookup.get(key)
-  return month ? month.shortLabel : key
+  return formatMonthShortLabel(key)
 }
 
 const renderProfitTrendChart = () => {
   if (!profitTrendChart) return
 
-  const xAxisLabels = visibleProfitRows.value.map((row) => monthLookup.get(row.key)?.label ?? row.key)
+  const xAxisLabels = visibleProfitRows.value.map((row) => formatMonthLabel(row.key))
   const salesSeries = visibleProfitRows.value.map((row) => row.sales)
   const profitSeries = visibleProfitRows.value.map((row) => row.profit)
   const marginSeries = visibleProfitRows.value.map((row) => (row.profit / row.sales) * 100)
   const previousYearMarginSeries = visibleProfitRows.value.map((row) => row.previousYearMargin)
 
-  const febBoundaryLabel = monthLookup.get('2026-02')?.label ?? '2026年2月'
-  const hasFebBoundary = xAxisLabels.includes(febBoundaryLabel)
+  const amountSeries = [...salesSeries, ...profitSeries]
+  const amountMinValue = Math.min(0, ...amountSeries)
+  const amountMaxValue = Math.max(0, ...amountSeries)
+  const amountSpan = Math.max(1, amountMaxValue - amountMinValue)
+  const amountPadding = Math.max(150000, Math.round(amountSpan * 0.08))
+  const amountAxisMin = amountMinValue < 0
+    ? Math.floor((amountMinValue - amountPadding) / 100000) * 100000
+    : 0
+  const amountAxisMax = Math.ceil((amountMaxValue + amountPadding) / 100000) * 100000
 
   profitTrendChart.setOption({
     backgroundColor: 'transparent',
@@ -1106,6 +1503,8 @@ const renderProfitTrendChart = () => {
       {
         type: 'value',
         name: '金額（¥）',
+        min: amountAxisMin,
+        max: amountAxisMax,
         axisLabel: {
           color: chartTextColor,
           formatter: (value: number) => `${Math.round(value / 10000)}万`
@@ -1175,22 +1574,7 @@ const renderProfitTrendChart = () => {
           type: 'dashed',
           color: chartAxisColor
         },
-        data: previousYearMarginSeries,
-        markLine: hasFebBoundary
-          ? {
-              symbol: 'none',
-              lineStyle: {
-                color: chartAxisColor,
-                type: 'dashed',
-                width: 2
-              },
-              label: {
-                color: '#64748b',
-                formatter: '半期境界'
-              },
-              data: [{ xAxis: febBoundaryLabel }]
-            }
-          : undefined
+        data: previousYearMarginSeries
       }
     ]
   })
@@ -1213,7 +1597,7 @@ const onWindowKeydown = (event: KeyboardEvent) => {
 }
 
 watch(
-  [activeTab, visibleMonthKeys],
+  [activeTab, memberChartVisibleMonthKeys, visibleMonthKeys],
   async ([tab]) => {
     await nextTick()
 
@@ -1232,10 +1616,19 @@ watch(
   { immediate: true }
 )
 
-watch(selectedDonutMonth, () => {
+watch([selectedDonutMonth, memberDonutSortMode], () => {
   if (activeTab.value === 'memberChart') {
+    initMemberCharts()
     renderMemberCharts()
+    resizeCharts()
   }
+})
+
+watch(selectedHalfYearPeriodId, () => {
+  if (activeTab.value !== 'profitTracker') return
+  initProfitChart()
+  renderProfitTrendChart()
+  resizeCharts()
 })
 
 onMounted(() => {
@@ -1342,10 +1735,79 @@ onBeforeUnmount(() => {
   margin-bottom: 12px;
 }
 
+.panel-header-split {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .panel-header h2 {
   margin: 0;
   color: #1e293b;
   font-size: 18px;
+}
+
+.member-sales-header-controls {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.member-sales-filter-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.member-sales-filter-buttons {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.member-sales-scale-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.member-sales-scale-buttons {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.member-sales-scale-btn {
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 9px;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.member-sales-scale-btn:hover {
+  background: #f1f5f9;
+}
+
+.member-sales-scale-btn-active {
+  border-color: #1d4ed8;
+  background: #dbeafe;
+  color: #1e3a8a;
 }
 
 .work-hours-controls {
@@ -1470,10 +1932,6 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 
-.grid-shell-lg {
-  height: 560px;
-}
-
 .work-hours-stage {
   overflow: auto;
   border-radius: 10px;
@@ -1481,6 +1939,20 @@ onBeforeUnmount(() => {
 
 .work-hours-zoom {
   transform-origin: top left;
+}
+
+.member-sales-stage {
+  height: 680px;
+  overflow: auto;
+  border-radius: 10px;
+}
+
+.member-sales-zoom {
+  transform-origin: top left;
+}
+
+.grid-shell-member-sales {
+  height: 680px;
 }
 
 .grid-shell-hours {
@@ -1493,7 +1965,7 @@ onBeforeUnmount(() => {
 
 .chart-layout {
   display: grid;
-  grid-template-columns: 2fr 1fr;
+  grid-template-columns: 1fr;
   gap: 14px;
 }
 
@@ -1516,6 +1988,30 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   gap: 10px;
   margin-bottom: 8px;
+}
+
+.chart-card-head-wrap {
+  flex-wrap: wrap;
+}
+
+.member-chart-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.member-chart-custom-range {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.member-chart-range-separator {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .donut-select {
@@ -1599,6 +2095,35 @@ onBeforeUnmount(() => {
   margin: 0;
   color: #1e293b;
   font-size: 16px;
+}
+
+.tracker-period-controls {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tracker-period-btn {
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #475569;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 10px;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.tracker-period-btn:hover {
+  background: #f1f5f9;
+}
+
+.tracker-period-btn-active {
+  border-color: #1d4ed8;
+  background: #dbeafe;
+  color: #1e3a8a;
 }
 
 .tracker-badge {
@@ -1802,6 +2327,18 @@ onBeforeUnmount(() => {
     width: 100%;
   }
 
+  .member-sales-scale-control {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .member-sales-header-controls,
+  .member-sales-filter-group,
+  .member-sales-filter-buttons {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
   .chart-layout {
     grid-template-columns: 1fr;
   }
@@ -1811,8 +2348,9 @@ onBeforeUnmount(() => {
     grid-template-columns: 1fr;
   }
 
-  .grid-shell-lg {
-    height: 480px;
+  .member-sales-stage,
+  .grid-shell-member-sales {
+    height: 560px;
   }
 
   .grid-shell-hours {
