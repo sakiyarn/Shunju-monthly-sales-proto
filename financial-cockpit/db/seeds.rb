@@ -39,16 +39,16 @@ ActiveRecord::Base.transaction do
   end
 
   users_seed = [
-    { code: "u01", name: "田中 太郎", email: "tanaka@example.com", system_role: "admin", role_name: "代表", display_name: "代表A" },
-    { code: "u02", name: "佐藤 花子", email: "sato@example.com", system_role: "admin", role_name: "代表", display_name: "代表B" },
-    { code: "u03", name: "鈴木 一郎", email: "suzuki@example.com", system_role: "member", role_name: "三千人将", display_name: "三千人将A" },
-    { code: "u04", name: "高橋 春菜", email: "takahashi@example.com", system_role: "member", role_name: "千人将", display_name: "千人将A" },
-    { code: "u05", name: "伊藤 翔", email: "ito@example.com", system_role: "member", role_name: "三百人将", display_name: "三百人将A" },
-    { code: "u06", name: "渡辺 美咲", email: "watanabe@example.com", system_role: "member", role_name: "百人将", display_name: "百人将A" },
-    { code: "u07", name: "山本 隆", email: "yamamoto@example.com", system_role: "member", role_name: "什長", display_name: "什長A" },
-    { code: "u08", name: "中村 彩", email: "nakamura@example.com", system_role: "member", role_name: "什長", display_name: "什長B" },
-    { code: "u09", name: "小林 健", email: "kobayashi@example.com", system_role: "member", role_name: "什長", display_name: "什長C" },
-    { code: "u10", name: "加藤 綾", email: "kato@example.com", system_role: "member", role_name: "什長", display_name: "什長D" }
+    { code: "u01", name: "田中 太郎", email: "tanaka@example.com", system_role: "admin", role_name: "代表", display_name: "代表A", display_order: 10 },
+    { code: "u02", name: "佐藤 花子", email: "sato@example.com", system_role: "admin", role_name: "代表", display_name: "代表B", display_order: 20 },
+    { code: "u03", name: "鈴木 一郎", email: "suzuki@example.com", system_role: "member", role_name: "三千人将", display_name: "三千人将A", display_order: 30 },
+    { code: "u04", name: "高橋 春菜", email: "takahashi@example.com", system_role: "member", role_name: "千人将", display_name: "千人将A", display_order: 40 },
+    { code: "u05", name: "伊藤 翔", email: "ito@example.com", system_role: "member", role_name: "三百人将", display_name: "三百人将A", display_order: 50 },
+    { code: "u06", name: "渡辺 美咲", email: "watanabe@example.com", system_role: "member", role_name: "百人将", display_name: "百人将A", display_order: 60 },
+    { code: "u07", name: "山本 隆", email: "yamamoto@example.com", system_role: "member", role_name: "什長", display_name: "什長A", display_order: 70 },
+    { code: "u08", name: "中村 彩", email: "nakamura@example.com", system_role: "member", role_name: "什長", display_name: "什長B", display_order: 80 },
+    { code: "u09", name: "小林 健", email: "kobayashi@example.com", system_role: "member", role_name: "什長", display_name: "什長C", display_order: 90 },
+    { code: "u10", name: "加藤 綾", email: "kato@example.com", system_role: "member", role_name: "什長", display_name: "什長D", display_order: 100 }
   ]
 
   users_by_code = {}
@@ -62,6 +62,7 @@ ActiveRecord::Base.transaction do
       system_role: user_seed[:system_role],
       role: roles_by_name.fetch(user_seed[:role_name]),
       display_name: user_seed[:display_name],
+      display_order: user_seed[:display_order],
       is_active: true,
       password: "password123",
       password_confirmation: "password123"

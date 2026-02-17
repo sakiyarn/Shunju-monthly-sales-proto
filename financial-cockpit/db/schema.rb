@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_02_16_000200) do
+ActiveRecord::Schema[7.2].define(version: 2026_02_16_000300) do
   create_table "billing_adjustments", force: :cascade do |t|
     t.integer "user_id"
     t.integer "project_id"
@@ -135,6 +135,8 @@ ActiveRecord::Schema[7.2].define(version: 2026_02_16_000200) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.boolean "is_active", default: true, null: false
+    t.integer "display_order", default: 9999, null: false
+    t.index ["display_order"], name: "index_users_on_display_order"
     t.index ["email"], name: "index_users_on_email", unique: true
     t.index ["is_active"], name: "index_users_on_is_active"
     t.index ["role_id"], name: "index_users_on_role_id"

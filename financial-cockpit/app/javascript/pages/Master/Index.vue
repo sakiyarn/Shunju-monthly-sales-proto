@@ -13,26 +13,41 @@
         <table class="w-full text-sm">
           <thead>
             <tr class="text-left text-slate-600">
+              <th class="p-2">並び順</th>
               <th class="p-2">名前</th>
               <th class="p-2">表示名</th>
               <th class="p-2">メール</th>
               <th class="p-2">役職</th>
               <th class="p-2">権限</th>
               <th class="p-2">状態</th>
+              <th class="p-2">関連件数</th>
               <th class="p-2">操作</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="u in filteredSectionUsers" :key="u.id" class="border-t border-slate-200">
+              <td class="p-2">
+                <input
+                  :value="u.display_order"
+                  type="number"
+                  min="1"
+                  max="9999"
+                  class="input w-24"
+                  @change="updateDisplayOrder(u, $event)"
+                />
+              </td>
               <td class="p-2">{{ u.name }}</td>
               <td class="p-2">{{ u.display_name || '—' }}</td>
               <td class="p-2">{{ u.email }}</td>
               <td class="p-2">{{ u.role_name || '未設定' }}</td>
               <td class="p-2">{{ u.system_role }}</td>
               <td class="p-2">
-                <span :class="u.is_active ? 'text-emerald-700' : 'text-slate-500'">
+                <span :class="u.is_active ? 'text-emerald-700' : 'text-red-700'">
                   {{ u.is_active ? '有効' : '無効' }}
                 </span>
+              </td>
+              <td class="p-2">
+                {{ u.related_records_count }}
               </td>
               <td class="p-2">
                 <button class="btn-sub" @click="openUserModal(u.id)">編集</button>
@@ -50,10 +65,19 @@
                 >
                   再有効化
                 </button>
+                <button
+                  class="btn-sub ml-1 text-red-700"
+                  :class="u.can_hard_delete ? '' : 'cursor-not-allowed opacity-50 text-slate-400'"
+                  :disabled="!u.can_hard_delete"
+                  :title="u.can_hard_delete ? '関連データ0件のため削除可能です' : `関連データが${u.related_records_count}件あるため削除できません`"
+                  @click="hardDeleteUser(u)"
+                >
+                  削除
+                </button>
               </td>
             </tr>
             <tr v-if="filteredSectionUsers.length === 0" class="border-t border-slate-200">
-              <td class="p-3 text-sm text-slate-500" colspan="8">表示対象のメンバーはいません</td>
+              <td class="p-3 text-sm text-slate-500" colspan="9">表示対象のメンバーはいません</td>
             </tr>
           </tbody>
         </table>
@@ -246,6 +270,15 @@
           <p v-if="userFormErrors.name" class="error-msg">{{ userFormErrors.name }}</p>
           <input v-model="userModal.form.display_name" class="input w-full" placeholder="表示名（例: 三千人将A）" />
           <p v-if="userFormErrors.display_name" class="error-msg">{{ userFormErrors.display_name }}</p>
+          <input
+            v-model.number="userModal.form.display_order"
+            type="number"
+            min="1"
+            max="9999"
+            class="input w-full"
+            placeholder="並び順（1〜9999）"
+          />
+          <p v-if="userFormErrors.display_order" class="error-msg">{{ userFormErrors.display_order }}</p>
           <input v-model="userModal.form.email" class="input w-full" placeholder="メール" />
           <p v-if="userFormErrors.email" class="error-msg">{{ userFormErrors.email }}</p>
           <select v-model="userModal.form.role_id" class="input w-full">
@@ -295,7 +328,10 @@ interface UserRecord {
   role_id: number | null
   display_name: string | null
   role_name: string | null
+  display_order: number
   is_active: boolean
+  related_records_count: number
+  can_hard_delete: boolean
 }
 
 interface InertiaFlash {
@@ -579,7 +615,8 @@ const userModal = reactive({
     email: '',
     system_role: 'member' as UserRole,
     role_id: null as number | null,
-    display_name: ''
+    display_name: '',
+    display_order: 1
   }
 })
 const projectModalOpen = ref(false)
@@ -606,6 +643,7 @@ const firstServerError = (key: string) => {
 const userFormErrors = computed(() => ({
   name: firstServerError('name'),
   display_name: firstServerError('display_name'),
+  display_order: firstServerError('display_order'),
   email: firstServerError('email'),
   role_id: firstServerError('role_id'),
   system_role: firstServerError('system_role'),
@@ -626,6 +664,7 @@ const resetUserModalForm = () => {
   userModal.form.system_role = 'member'
   userModal.form.role_id = null
   userModal.form.display_name = ''
+  userModal.form.display_order = suggestedDisplayOrder()
 }
 
 function openUserModal(userId?: number) {
@@ -637,6 +676,7 @@ function openUserModal(userId?: number) {
     userModal.form.system_role = user.system_role
     userModal.form.role_id = user.role_id
     userModal.form.display_name = user.display_name ?? ''
+    userModal.form.display_order = user.display_order
     userModal.editingUserId = user.id
   } else {
     resetUserModalForm()
@@ -656,7 +696,8 @@ function saveUserModal() {
     email: userModal.form.email,
     system_role: userModal.form.system_role,
     role_id: userModal.form.role_id,
-    display_name: userModal.form.display_name
+    display_name: userModal.form.display_name,
+    display_order: userModal.form.display_order
   }
 
   suppressBeforeVisitGuard = true
@@ -703,6 +744,64 @@ function deactivateUser(id: number) {
 function activateUser(id: number) {
   suppressBeforeVisitGuard = true
   router.patch(`/users/${id}/activate`, {}, {
+    preserveScroll: true,
+    preserveState: true,
+    onFinish: () => {
+      suppressBeforeVisitGuard = false
+    }
+  })
+}
+
+function suggestedDisplayOrder() {
+  const maxDisplayOrder = props.users.reduce((max, user) => {
+    return Math.max(max, user.display_order)
+  }, 0)
+  return Math.min(9999, Math.max(1, maxDisplayOrder + 1))
+}
+
+function firstValidationMessage(validationErrors: Record<string, string | string[]>) {
+  const firstError = Object.values(validationErrors)[0]
+  if (Array.isArray(firstError)) return firstError[0] ?? ''
+  return firstError ?? ''
+}
+
+function updateDisplayOrder(user: UserRecord, event: Event) {
+  const target = event.target as HTMLInputElement
+  const nextDisplayOrder = Number(target.value)
+
+  if (!Number.isInteger(nextDisplayOrder) || nextDisplayOrder < 1 || nextDisplayOrder > 9999) {
+    target.value = String(user.display_order)
+    showToast('error', '並び順は1〜9999の整数で入力してください')
+    return
+  }
+
+  if (nextDisplayOrder === user.display_order) return
+
+  suppressBeforeVisitGuard = true
+  router.patch(`/users/${user.id}`, { user: { display_order: nextDisplayOrder } }, {
+    preserveScroll: true,
+    preserveState: true,
+    onError: (validationErrors) => {
+      target.value = String(user.display_order)
+      const message = firstValidationMessage(validationErrors)
+      showToast('error', message || '並び順を更新できませんでした')
+    },
+    onFinish: () => {
+      suppressBeforeVisitGuard = false
+    }
+  })
+}
+
+function hardDeleteUser(user: UserRecord) {
+  if (!user.can_hard_delete) {
+    showToast('error', `関連データが${user.related_records_count}件あるため削除できません`)
+    return
+  }
+
+  if (!window.confirm('このメンバーを完全に削除します。元に戻せません。よろしいですか？')) return
+
+  suppressBeforeVisitGuard = true
+  router.delete(`/users/${user.id}/hard_destroy`, {
     preserveScroll: true,
     preserveState: true,
     onFinish: () => {

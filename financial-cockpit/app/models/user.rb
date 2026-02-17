@@ -9,11 +9,12 @@ class User < ApplicationRecord
   has_many :staff_monthly_results, dependent: :restrict_with_exception
   has_many :billing_adjustments, dependent: :restrict_with_exception
 
-  scope :ordered_for_master, -> { includes(:role).order(is_active: :desc, name: :asc) }
+  scope :ordered_for_master, -> { includes(:role).order(:display_order, :name) }
 
   validates :name, presence: true
   validates :email, presence: true, uniqueness: true
   validates :system_role, inclusion: { in: %w[admin member] }
+  validates :display_order, numericality: { only_integer: true, greater_than_or_equal_to: 1, less_than_or_equal_to: 9999 }
 
   has_secure_password
 end

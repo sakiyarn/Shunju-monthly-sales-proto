@@ -8,6 +8,7 @@ Rails.application.routes.draw do
   resources :users, only: %i[create update destroy] do
     member do
       patch :activate
+      delete :hard_destroy
     end
   end
 
