@@ -1,0 +1,19 @@
+Rails.application.routes.draw do
+  get "up" => "rails/health#show", as: :rails_health_check
+
+  root "pages#project_analysis"
+  get "/dashboard", to: "pages#dashboard"
+  get "/master", to: "master#index", as: :master
+  get "/master-data", to: "master#index"
+  resources :users, only: %i[create update destroy] do
+    member do
+      patch :activate
+      delete :hard_destroy
+    end
+  end
+
+  # Redirect to localhost from 127.0.0.1 to use same IP address with Vite server
+  constraints(host: "127.0.0.1") do
+    get "(*path)", to: redirect { |params, req| "#{req.protocol}localhost:#{req.port}/#{params[:path]}" }
+  end
+end
