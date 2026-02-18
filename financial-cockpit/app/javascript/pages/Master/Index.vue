@@ -84,33 +84,77 @@
       </div>
     </section>
 
-    <section class="card">
-      <h2 class="card-title">📁 セクション2: 案件管理</h2>
-      <button class="btn-accent mb-4" @click="openProjectModal">＋ 案件を追加</button>
-      <div class="space-y-2">
-        <div v-for="p in orderedProjects" :key="p.id" class="rounded border border-slate-200 p-3" :class="p.status === 'closed' ? 'opacity-60' : ''">
-          <div class="grid grid-cols-1 gap-2 md:grid-cols-4 md:items-center">
-            <div>
-              <span class="label">案件名</span>
-              <template v-if="editingProject.id === p.id && editingProject.field === 'name'">
-                <input v-model="p.name" class="input" @blur="editingProject = emptyEdit" />
-              </template>
-              <template v-else><button class="text-left hover:text-muted" @click="editingProject = { id: p.id, field: 'name' }">{{ p.name }}</button></template>
-            </div>
-            <div>
-              <span class="label">クライアント名</span>
-              <template v-if="editingProject.id === p.id && editingProject.field === 'client'">
-                <input v-model="p.client" class="input" @blur="editingProject = emptyEdit" />
-              </template>
-              <template v-else><button class="text-left hover:text-muted" @click="editingProject = { id: p.id, field: 'client' }">{{ p.client }}</button></template>
-            </div>
-            <div><span class="label">ステータス</span><p>{{ p.status === 'open' ? '進行中' : '終了' }}</p></div>
-            <div class="md:text-right"><button v-if="p.status === 'open'" class="btn-sub" @click="closeProject(p.id)">終了する</button></div>
-          </div>
+    <section class="card master-s2">
+      <div class="master-s2-toolbar">
+        <div>
+          <h2 class="card-title mb-1">セクション2: 案件管理</h2>
+          <p class="text-xs text-slate-600">編集ボタン経由で案件名を変更 / 並び順は1〜9999で即時反映</p>
+        </div>
+        <div class="master-s2-metrics">
+          <span class="master-s2-badge"><strong>{{ section2Stats.active }}件</strong><span>進行中</span></span>
+          <span class="master-s2-badge"><strong>{{ section2Stats.closed }}件</strong><span>終了</span></span>
+          <span class="master-s2-badge"><strong>{{ section2Stats.deletable }}件</strong><span>削除可</span></span>
         </div>
       </div>
-      <p v-if="errors.s2" class="error-msg">{{ errors.s2 }}</p>
-      <button class="btn-save" @click="saveSection('s2')">保存</button>
+
+      <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <button class="btn-accent cursor-pointer" @click="openProjectModal">＋ 案件を追加</button>
+        <label class="inline-flex items-center gap-2 text-sm text-slate-700">
+          <input v-model="showInactiveProjects" type="checkbox" />
+          終了案件を表示
+        </label>
+      </div>
+
+      <div class="master-s2-head">
+        <div>並び順</div>
+        <div>案件名</div>
+        <div>状態</div>
+        <div class="text-right">操作</div>
+      </div>
+
+      <div class="space-y-2">
+        <div
+          v-for="p in filteredSection2Projects"
+          :key="p.id"
+          class="master-s2-row"
+          :class="p.is_active ? '' : 'opacity-60'"
+        >
+          <div>
+            <input
+              :value="p.display_order"
+              type="number"
+              min="1"
+              max="9999"
+              class="input w-24"
+              @change="updateProjectDisplayOrder(p, $event)"
+            />
+          </div>
+          <div><p class="master-s2-name">{{ p.name }}</p></div>
+          <div>
+            <span :class="p.is_active ? 'master-s2-status-active' : 'master-s2-status-closed'">
+              {{ p.is_active ? '進行中' : '終了' }}
+            </span>
+          </div>
+          <div class="text-right">
+            <button class="btn-sub cursor-pointer" @click="openProjectEditModal(p)">編集</button>
+            <button v-if="p.is_active" class="btn-sub ml-1 cursor-pointer" @click="closeProject(p.id)">終了する</button>
+            <button v-else class="btn-sub ml-1 cursor-pointer text-emerald-700" @click="activateProject(p.id)">再開</button>
+            <button
+              class="btn-sub ml-1 text-red-700"
+              :class="p.can_hard_delete ? 'cursor-pointer' : 'cursor-not-allowed opacity-50 text-slate-400'"
+              :disabled="!p.can_hard_delete"
+              :title="p.can_hard_delete ? '関連データ0件のため削除可能です' : `関連データが${p.related_records_count}件あるため削除できません`"
+              @click="hardDeleteProject(p)"
+            >
+              削除
+            </button>
+          </div>
+        </div>
+
+        <p v-if="filteredSection2Projects.length === 0" class="rounded border border-slate-200 p-3 text-sm text-slate-500">
+          表示対象の案件はありません
+        </p>
+      </div>
     </section>
 
     <section class="card">
@@ -299,8 +343,22 @@
     <div v-if="projectModalOpen" class="fixed inset-0 z-50 grid place-items-center bg-black/60">
       <div class="w-full max-w-md rounded-lg border border-slate-200 bg-card p-4">
         <h3 class="mb-3 text-lg font-semibold">案件追加</h3>
-        <div class="space-y-2"><input v-model="projectForm.name" class="input w-full" placeholder="案件名" /><input v-model="projectForm.client" class="input w-full" placeholder="クライアント名" /></div>
+        <div class="space-y-2"><input v-model="projectForm.name" class="input w-full" placeholder="案件名" /></div>
         <div class="mt-4 flex justify-end gap-2"><button class="btn-sub" @click="projectModalOpen = false">キャンセル</button><button class="btn-accent" @click="saveProjectModal">保存</button></div>
+      </div>
+    </div>
+
+    <div v-if="projectEditModal.open" class="fixed inset-0 z-50 grid place-items-center bg-black/60">
+      <div class="w-full max-w-md rounded-lg border border-slate-200 bg-card p-4">
+        <h3 class="mb-1 text-lg font-semibold">案件名を編集</h3>
+        <p class="mb-3 text-xs text-slate-600">反映後は他画面の案件名表示にも影響します。</p>
+        <div class="space-y-2">
+          <input v-model="projectEditModal.name" class="input w-full" placeholder="案件名" @keydown.enter.prevent="saveProjectEditModal" />
+        </div>
+        <div class="mt-4 flex justify-end gap-2">
+          <button class="btn-sub" @click="closeProjectEditModal">キャンセル</button>
+          <button class="btn-accent" @click="saveProjectEditModal">保存</button>
+        </div>
       </div>
     </div>
   </main>
@@ -334,6 +392,15 @@ interface UserRecord {
   can_hard_delete: boolean
 }
 
+interface ProjectRecord {
+  id: number
+  name: string
+  is_active: boolean
+  display_order: number
+  related_records_count: number
+  can_hard_delete: boolean
+}
+
 interface InertiaFlash {
   notice?: string
   alert?: string
@@ -348,6 +415,7 @@ interface InertiaPageProps {
 const props = defineProps<{
   users: UserRecord[]
   roles: RoleOption[]
+  projects: ProjectRecord[]
   initialData?: Record<string, unknown>
 }>()
 
@@ -361,7 +429,7 @@ const filteredSectionUsers = computed(() => {
 type UserRole = 'admin' | 'member'
 
 interface User { id: string; name: string; email: string; role: UserRole }
-interface Project { id: string; name: string; client: string; status: 'open' | 'closed' }
+interface DemoProject { id: string; name: string; client: string; status: 'open' | 'closed' }
 interface Assignment { projectId: string; userId: string; defaultUnitPrice: number }
 interface MonthDef { key: string; label: string; month: number }
 interface Expense { id: string; month: string; name: string; amount: number; projectIds: string[] }
@@ -405,15 +473,49 @@ const users = reactive<User[]>([
   { id: 'u10', name: '加藤 綾', email: 'kato@example.com', role: 'member' }
 ])
 
-const projects = reactive<Project[]>([
+const projects = reactive<DemoProject[]>([
   { id: 'p001', name: '案件001', client: 'Alpha株式会社', status: 'open' },
   { id: 'p002', name: '案件002', client: 'Beta株式会社', status: 'open' },
   { id: 'p003', name: '案件003', client: 'Gamma株式会社', status: 'closed' }
 ])
+const section2Projects = reactive<ProjectRecord[]>([])
+const showInactiveProjects = ref(false)
 
-const orderedProjects = computed(() => [...projects].sort((a, b) => (a.status === b.status ? 0 : a.status === 'open' ? -1 : 1)))
-const emptyEdit: { id: string; field: 'name' | 'client' | '' } = { id: '', field: '' }
-const editingProject = ref<{ id: string; field: 'name' | 'client' | '' }>({ ...emptyEdit })
+const syncSection2Projects = () => {
+  section2Projects.splice(
+    0,
+    section2Projects.length,
+    ...props.projects.map((project) => ({
+      id: project.id,
+      name: project.name,
+      is_active: project.is_active,
+      display_order: project.display_order,
+      related_records_count: project.related_records_count,
+      can_hard_delete: project.can_hard_delete
+    }))
+  )
+}
+syncSection2Projects()
+
+const orderedSection2Projects = computed(() => {
+  return [...section2Projects].sort((a, b) => {
+    if (a.is_active !== b.is_active) return a.is_active ? -1 : 1
+    if (a.display_order !== b.display_order) return a.display_order - b.display_order
+    return a.name.localeCompare(b.name, 'ja')
+  })
+})
+
+const filteredSection2Projects = computed(() => {
+  if (showInactiveProjects.value) return orderedSection2Projects.value
+  return orderedSection2Projects.value.filter((project) => project.is_active)
+})
+
+const section2Stats = computed(() => {
+  const active = section2Projects.filter((project) => project.is_active).length
+  const closed = section2Projects.length - active
+  const deletable = section2Projects.filter((project) => project.can_hard_delete).length
+  return { active, closed, deletable }
+})
 
 const assignments = reactive<Assignment[]>([
   { projectId: 'p001', userId: 'u01', defaultUnitPrice: 12000 },
@@ -620,7 +722,13 @@ const userModal = reactive({
   }
 })
 const projectModalOpen = ref(false)
-const projectForm = reactive({ name: '', client: '' })
+const projectForm = reactive({ name: '' })
+const projectEditModal = reactive({
+  open: false,
+  id: null as number | null,
+  name: '',
+  originalName: ''
+})
 
 const clearErrors = (prefix: string) => {
   Object.keys(errors).forEach((k) => {
@@ -812,20 +920,150 @@ function hardDeleteUser(user: UserRecord) {
 
 function openProjectModal() { projectModalOpen.value = true }
 function saveProjectModal() {
-  if (!projectForm.name || !projectForm.client) return
-  projects.push({ id: `p${String(projects.length + 1).padStart(3, '0')}`, name: projectForm.name, client: projectForm.client, status: 'open' })
-  projectForm.name = ''
-  projectForm.client = ''
-  projectModalOpen.value = false
-  markDirty()
+  const name = projectForm.name.trim()
+  if (!name) {
+    showToast('error', '案件名を入力してください')
+    return
+  }
+
+  suppressBeforeVisitGuard = true
+  router.post('/projects', { project: { name } }, {
+    preserveScroll: true,
+    preserveState: true,
+    onSuccess: () => {
+      projectForm.name = ''
+      projectModalOpen.value = false
+    },
+    onError: (validationErrors) => {
+      const message = firstValidationMessage(validationErrors)
+      showToast('error', message || '案件を追加できませんでした')
+    },
+    onFinish: () => {
+      suppressBeforeVisitGuard = false
+    }
+  })
 }
 
-function closeProject(projectId: string) {
-  const target = projects.find((p) => p.id === projectId)
-  if (target) {
-    target.status = 'closed'
-    markDirty()
+function openProjectEditModal(project: ProjectRecord) {
+  projectEditModal.open = true
+  projectEditModal.id = project.id
+  projectEditModal.name = project.name
+  projectEditModal.originalName = project.name
+}
+
+function closeProjectEditModal() {
+  projectEditModal.open = false
+  projectEditModal.id = null
+  projectEditModal.name = ''
+  projectEditModal.originalName = ''
+}
+
+function saveProjectEditModal() {
+  if (projectEditModal.id === null) return
+
+  const normalizedName = projectEditModal.name.trim()
+  if (!normalizedName) {
+    showToast('error', '案件名を入力してください')
+    return
   }
+
+  if (normalizedName === projectEditModal.originalName) {
+    closeProjectEditModal()
+    return
+  }
+
+  const project = section2Projects.find((item) => item.id === projectEditModal.id)
+  const previousName = project?.name ?? projectEditModal.originalName
+  if (project) project.name = normalizedName
+
+  suppressBeforeVisitGuard = true
+  router.patch(`/projects/${projectEditModal.id}`, { project: { name: normalizedName } }, {
+    preserveScroll: true,
+    preserveState: true,
+    onSuccess: () => {
+      closeProjectEditModal()
+    },
+    onError: (validationErrors) => {
+      if (project) project.name = previousName
+      const message = firstValidationMessage(validationErrors)
+      showToast('error', message || '案件名を更新できませんでした')
+    },
+    onFinish: () => {
+      suppressBeforeVisitGuard = false
+    }
+  })
+}
+
+function updateProjectDisplayOrder(project: ProjectRecord, event: Event) {
+  const target = event.target as HTMLInputElement
+  const nextDisplayOrder = Number(target.value)
+
+  if (!Number.isInteger(nextDisplayOrder) || nextDisplayOrder < 1 || nextDisplayOrder > 9999) {
+    target.value = String(project.display_order)
+    showToast('error', '並び順は1〜9999の整数で入力してください')
+    return
+  }
+
+  if (nextDisplayOrder === project.display_order) return
+
+  const previousDisplayOrder = project.display_order
+  project.display_order = nextDisplayOrder
+
+  suppressBeforeVisitGuard = true
+  router.patch(`/projects/${project.id}`, { project: { display_order: nextDisplayOrder } }, {
+    preserveScroll: true,
+    preserveState: true,
+    onError: (validationErrors) => {
+      project.display_order = previousDisplayOrder
+      target.value = String(previousDisplayOrder)
+      const message = firstValidationMessage(validationErrors)
+      showToast('error', message || '並び順を更新できませんでした')
+    },
+    onFinish: () => {
+      suppressBeforeVisitGuard = false
+    }
+  })
+}
+
+function closeProject(projectId: number) {
+  if (!window.confirm('この案件を終了してよろしいですか？')) return
+  suppressBeforeVisitGuard = true
+  router.delete(`/projects/${projectId}`, {
+    preserveScroll: true,
+    preserveState: true,
+    onFinish: () => {
+      suppressBeforeVisitGuard = false
+    }
+  })
+}
+
+function activateProject(projectId: number) {
+  suppressBeforeVisitGuard = true
+  router.patch(`/projects/${projectId}/activate`, {}, {
+    preserveScroll: true,
+    preserveState: true,
+    onFinish: () => {
+      suppressBeforeVisitGuard = false
+    }
+  })
+}
+
+function hardDeleteProject(project: ProjectRecord) {
+  if (!project.can_hard_delete) {
+    showToast('error', `関連データが${project.related_records_count}件あるため削除できません`)
+    return
+  }
+
+  if (!window.confirm('この案件を完全に削除します。元に戻せません。よろしいですか？')) return
+
+  suppressBeforeVisitGuard = true
+  router.delete(`/projects/${project.id}/hard_destroy`, {
+    preserveScroll: true,
+    preserveState: true,
+    onFinish: () => {
+      suppressBeforeVisitGuard = false
+    }
+  })
 }
 
 function addAssignment() {
@@ -1010,11 +1248,6 @@ function validateSection(section: string) {
     if (invalid) errors.s1 = '名前・メールアドレスは必須です。'
     return !invalid
   }
-  if (section === 's2') {
-    const invalid = projects.some((p) => !p.name || !p.client)
-    if (invalid) errors.s2 = '案件名・クライアント名は必須です。'
-    return !invalid
-  }
   if (section === 's3') {
     const invalid = assignments.some((a) => Number.isNaN(Number(a.defaultUnitPrice)))
     if (invalid) errors.s3 = 'デフォルト売上単価は数値で入力してください。'
@@ -1113,6 +1346,14 @@ watch(
     if (flash?.alert) showToast('error', flash.alert)
   },
   { immediate: true }
+)
+
+watch(
+  () => props.projects,
+  () => {
+    syncSection2Projects()
+  },
+  { deep: true }
 )
 
 watch([users, projects, assignments, expenses, adjustments, accountingRows, memberCostRows, officerCostRows], () => {

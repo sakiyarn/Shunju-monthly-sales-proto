@@ -11,6 +11,12 @@ Rails.application.routes.draw do
       delete :hard_destroy
     end
   end
+  resources :projects, only: %i[create update destroy] do
+    member do
+      patch :activate
+      delete :hard_destroy
+    end
+  end
 
   # Redirect to localhost from 127.0.0.1 to use same IP address with Vite server
   constraints(host: "127.0.0.1") do

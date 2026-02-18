@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_02_16_000300) do
+ActiveRecord::Schema[7.2].define(version: 2026_02_18_000100) do
   create_table "billing_adjustments", force: :cascade do |t|
     t.integer "user_id"
     t.integer "project_id"
@@ -102,6 +102,8 @@ ActiveRecord::Schema[7.2].define(version: 2026_02_16_000300) do
     t.boolean "is_active", default: true, null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.integer "display_order", default: 9999, null: false
+    t.index ["display_order"], name: "index_projects_on_display_order"
   end
 
   create_table "roles", force: :cascade do |t|
