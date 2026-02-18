@@ -30,4 +30,31 @@ class MasterControllerTest < ActionDispatch::IntegrationTest
     selected_names = ordered_names.select { |name| ["A Active", "Z Active", "B Inactive"].include?(name) }
     assert_equal ["A Active", "Z Active", "B Inactive"], selected_names
   end
+
+  test "master includes project members props" do
+    project = Project.create!(name: "案件A", is_active: true)
+    user = User.create!(
+      name: "テストメンバー",
+      email: "master-project-member@example.com",
+      password: "password123",
+      password_confirmation: "password123",
+      system_role: "member",
+      is_active: true
+    )
+    project_member = ProjectMember.create!(project: project, user: user, default_billing_rate: 7_200)
+
+    get master_path, headers: { "X-Inertia" => "true" }
+
+    assert_response :success
+
+    payload = JSON.parse(response.body)
+    project_members = payload.dig("props", "project_members")
+    assert project_members.present?
+
+    response_member = project_members.find { |item| item["id"] == project_member.id }
+    assert_not_nil response_member
+    assert_equal project.id, response_member["project_id"]
+    assert_equal user.id, response_member["user_id"]
+    assert_equal 7_200, response_member["default_billing_rate"]
+  end
 end

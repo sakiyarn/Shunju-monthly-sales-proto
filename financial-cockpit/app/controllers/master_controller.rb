@@ -5,7 +5,8 @@ class MasterController < InertiaController
     render inertia: "Master/Index", props: {
       users: users_payload,
       roles: roles_payload,
-      projects: projects_payload
+      projects: projects_payload,
+      project_members: project_members_payload
     }
   end
 
@@ -52,5 +53,15 @@ class MasterController < InertiaController
         can_hard_delete: related_records_count.zero?
       )
     end
+  end
+
+  def project_members_payload
+    ProjectMember
+      .includes(:project, user: :role)
+      .map do |project_member|
+        payload = project_member.as_json(only: %i[id project_id user_id default_billing_rate])
+        payload["default_billing_rate"] = project_member.default_billing_rate.to_i
+        payload
+      end
   end
 end

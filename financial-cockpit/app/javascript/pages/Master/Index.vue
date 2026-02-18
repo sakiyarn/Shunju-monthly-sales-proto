@@ -157,39 +157,118 @@
       </div>
     </section>
 
-    <section class="card">
+    <section class="card master-s3">
       <h2 class="card-title">🧩 セクション3: 案件メンバーアサイン</h2>
-      <div class="mb-4 flex flex-wrap gap-2">
-        <button v-for="p in projects" :key="`tab-${p.id}`" class="tab" :class="activeAssignProjectId === p.id ? 'tab-active' : ''" @click="activeAssignProjectId = p.id">{{ p.name }}</button>
-      </div>
-      <div class="space-y-3">
-        <table class="w-full text-sm">
-          <thead><tr class="text-left text-slate-600"><th class="p-2">メンバー</th><th class="p-2">デフォルト売上単価</th><th class="p-2">操作</th></tr></thead>
-          <tbody>
-            <tr v-for="(a, idx) in activeAssignments" :key="`${a.projectId}-${a.userId}`" class="border-t border-slate-200">
-              <td class="p-2">{{ userNameById(a.userId) }}</td>
-              <td class="p-2">
-                <input v-model.number="a.defaultUnitPrice" type="number" class="input" />
-                <p class="text-xs text-slate-500">{{ formatYen(a.defaultUnitPrice) }}</p>
-              </td>
-              <td class="p-2"><button class="btn-sub" @click="unassignMember(idx)">アサイン解除</button></td>
-            </tr>
-          </tbody>
-        </table>
-        <div class="rounded border border-slate-200 p-3">
-          <h3 class="mb-2 text-sm font-semibold">＋ メンバーをアサイン</h3>
-          <div class="flex flex-wrap items-end gap-2">
-            <select v-model="newAssign.userId" class="input">
-              <option value="">未アサインメンバーを選択</option>
-              <option v-for="u in unassignedUsers" :key="u.id" :value="u.id">{{ u.name }}</option>
-            </select>
-            <input v-model.number="newAssign.defaultUnitPrice" type="number" class="input" placeholder="デフォルト売上単価" />
-            <button class="btn-accent" @click="addAssignment">追加</button>
+      <div class="master-s3-tabs">
+        <div class="master-s3-active-tabs">
+          <p class="master-s3-tab-label">進行中案件</p>
+          <div class="master-s3-active-scroll">
+            <button
+              v-for="p in s3ActiveProjects"
+              :key="`tab-active-${p.id}`"
+              class="tab master-s3-tab"
+              :class="activeAssignProjectId === p.id ? 'tab-active' : ''"
+              @click="activeAssignProjectId = p.id"
+            >
+              {{ p.name }}
+            </button>
+            <p v-if="s3ActiveProjects.length === 0" class="master-s3-tab-empty">進行中案件はありません</p>
           </div>
-          <p v-if="errors.s3" class="error-msg">{{ errors.s3 }}</p>
+        </div>
+        <div v-if="s3ClosedProjects.length > 0" class="master-s3-closed-slot">
+          <div class="master-s3-closed-head">
+            <p class="master-s3-tab-label">終了案件</p>
+            <span class="master-s3-closed-count">{{ s3ClosedProjects.length }}件</span>
+          </div>
+          <select class="input master-s3-closed-select" :value="selectedClosedProjectValue" @change="selectClosedProject(($event.target as HTMLSelectElement).value)">
+            <option value="">終了案件を表示</option>
+            <option v-for="p in s3ClosedProjects" :key="`closed-select-${p.id}`" :value="String(p.id)">{{ p.name }}</option>
+          </select>
         </div>
       </div>
-      <button class="btn-save" @click="saveSection('s3')">保存</button>
+      <div class="space-y-3">
+        <p v-if="!activeAssignProject" class="rounded border border-slate-200 p-3 text-sm text-slate-500">
+          表示対象の案件がありません
+        </p>
+        <template v-else>
+          <div class="master-s3-tools">
+            <label class="master-s3-sort-wrap">
+              <span class="master-s3-sort-label">メンバー並び</span>
+              <select v-model="s3MemberSortMode" class="input master-s3-sort-select">
+                <option value="section_order">セクション1の並び順</option>
+                <option value="unit_price_desc">単価（高い順）</option>
+              </select>
+            </label>
+          </div>
+          <p v-if="!isActiveAssignProject" class="master-s3-readonly-note">
+            終了案件は閲覧専用です。アサイン追加・解除・単価編集はできません。
+          </p>
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-left text-slate-600">
+                <th class="p-2">メンバー</th>
+                <th class="p-2">デフォルト売上単価</th>
+                <th class="p-2 text-right">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="assignment in sortedActiveAssignments" :key="assignment.id" class="border-t border-slate-200">
+                <td class="p-2">
+                  <p class="font-semibold text-slate-900">{{ assignment.userLabel }}</p>
+                  <span v-if="!assignment.userIsActive" class="master-s3-inactive-badge">無効</span>
+                </td>
+                <td class="p-2">
+                  <p class="font-semibold text-slate-900">{{ formatYen(assignment.defaultUnitPrice) }}</p>
+                  <p class="text-xs text-slate-500">{{ assignment.defaultUnitPrice.toLocaleString('ja-JP') }}円</p>
+                </td>
+                <td class="p-2 text-right">
+                  <button
+                    class="btn-sub"
+                    :disabled="!isActiveAssignProject || s3State.processingAdd || s3State.processingRemoveId === assignment.id || s3PriceModal.processing"
+                    @click="openAssignmentPriceModal(assignment)"
+                  >
+                    編集
+                  </button>
+                  <button
+                    class="btn-sub ml-1"
+                    :disabled="!isActiveAssignProject || s3State.processingAdd || s3State.processingRemoveId === assignment.id || s3PriceModal.processing"
+                    @click="unassignMember(assignment)"
+                  >
+                    アサイン解除
+                  </button>
+                </td>
+              </tr>
+              <tr v-if="sortedActiveAssignments.length === 0" class="border-t border-slate-200">
+                <td class="p-3 text-sm text-slate-500" colspan="3">この案件にはアサイン済みメンバーがいません</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="rounded border border-slate-200 p-3">
+            <h3 class="mb-2 text-sm font-semibold">＋ メンバーをアサイン</h3>
+            <div class="flex flex-wrap items-end gap-2">
+              <select v-model.number="newAssign.userId" class="input" :disabled="!isActiveAssignProject || s3State.processingAdd">
+                <option :value="null">未アサインメンバーを選択</option>
+                <option v-for="u in unassignedUsers" :key="u.id" :value="u.id">{{ formatS3UserLabel(u) }}</option>
+              </select>
+              <input
+                v-model.number="newAssign.defaultUnitPrice"
+                type="number"
+                min="0"
+                step="1"
+                class="input"
+                placeholder="デフォルト売上単価"
+                :disabled="!isActiveAssignProject || s3State.processingAdd"
+              />
+              <button class="btn-accent" :disabled="!isActiveAssignProject || s3State.processingAdd" @click="addAssignment">
+                {{ s3State.processingAdd ? '追加中...' : '追加' }}
+              </button>
+            </div>
+            <p v-if="!isActiveAssignProject" class="mt-2 text-xs text-slate-500">終了案件には新規アサインできません。</p>
+            <p v-if="errors.s3" class="error-msg">{{ errors.s3 }}</p>
+            <p v-else-if="s3ServerError" class="error-msg">{{ s3ServerError }}</p>
+          </div>
+        </template>
+      </div>
     </section>
 
     <section class="card">
@@ -306,6 +385,31 @@
 
     <div v-if="toast.show" class="fixed right-4 top-20 rounded px-4 py-2 text-sm font-semibold" :class="toast.type === 'success' ? 'bg-green-600' : 'bg-red-600'">{{ toast.message }}</div>
 
+    <div v-if="s3PriceModal.open" class="fixed inset-0 z-50 grid place-items-center bg-black/60">
+      <div class="w-full max-w-md rounded-lg border border-slate-200 bg-card p-4">
+        <h3 class="mb-1 text-lg font-semibold">請求単価を編集</h3>
+        <p class="mb-3 text-sm text-slate-600">{{ s3PriceModal.userLabel }}</p>
+        <div class="space-y-2">
+          <input
+            v-model.number="s3PriceModal.rate"
+            type="number"
+            min="0"
+            step="1"
+            class="input w-full"
+            placeholder="デフォルト売上単価"
+          />
+          <p class="text-xs text-slate-500">{{ formatYen(s3PriceModal.rate) }}</p>
+          <p v-if="s3PriceModal.error" class="error-msg">{{ s3PriceModal.error }}</p>
+        </div>
+        <div class="mt-4 flex justify-end gap-2">
+          <button class="btn-sub" :disabled="s3PriceModal.processing" @click="closeAssignmentPriceModal">キャンセル</button>
+          <button class="btn-accent" :disabled="s3PriceModal.processing" @click="saveAssignmentPriceModal">
+            {{ s3PriceModal.processing ? '保存中...' : '保存' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
     <div v-if="userModal.open" class="fixed inset-0 z-50 grid place-items-center bg-black/60">
       <div class="w-full max-w-md rounded-lg border border-slate-200 bg-card p-4">
         <h3 class="mb-3 text-lg font-semibold">{{ userModal.editingUserId === null ? 'メンバー追加' : 'メンバー編集' }}</h3>
@@ -401,6 +505,25 @@ interface ProjectRecord {
   can_hard_delete: boolean
 }
 
+interface ProjectMemberRecord {
+  id: number
+  project_id: number
+  user_id: number
+  default_billing_rate: number | string
+}
+
+interface S3AssignmentRow {
+  id: number
+  projectId: number
+  userId: number
+  defaultUnitPrice: number
+  userLabel: string
+  userIsActive: boolean
+  userDisplayOrder: number
+}
+
+type S3MemberSortMode = 'section_order' | 'unit_price_desc'
+
 interface InertiaFlash {
   notice?: string
   alert?: string
@@ -416,6 +539,7 @@ const props = defineProps<{
   users: UserRecord[]
   roles: RoleOption[]
   projects: ProjectRecord[]
+  project_members: ProjectMemberRecord[]
   initialData?: Record<string, unknown>
 }>()
 
@@ -430,7 +554,6 @@ type UserRole = 'admin' | 'member'
 
 interface User { id: string; name: string; email: string; role: UserRole }
 interface DemoProject { id: string; name: string; client: string; status: 'open' | 'closed' }
-interface Assignment { projectId: string; userId: string; defaultUnitPrice: number }
 interface MonthDef { key: string; label: string; month: number }
 interface Expense { id: string; month: string; name: string; amount: number; projectIds: string[] }
 interface Adjustment { id: string; userId: string; projectId: string; fromMonth: string; toMonth: string; amount: number; memo: string }
@@ -517,26 +640,119 @@ const section2Stats = computed(() => {
   return { active, closed, deletable }
 })
 
-const assignments = reactive<Assignment[]>([
-  { projectId: 'p001', userId: 'u01', defaultUnitPrice: 12000 },
-  { projectId: 'p001', userId: 'u03', defaultUnitPrice: 7000 },
-  { projectId: 'p001', userId: 'u04', defaultUnitPrice: 6800 },
-  { projectId: 'p001', userId: 'u05', defaultUnitPrice: 6500 },
-  { projectId: 'p002', userId: 'u02', defaultUnitPrice: 11500 },
-  { projectId: 'p002', userId: 'u06', defaultUnitPrice: 6400 },
-  { projectId: 'p002', userId: 'u07', defaultUnitPrice: 6200 },
-  { projectId: 'p003', userId: 'u08', defaultUnitPrice: 6600 },
-  { projectId: 'p003', userId: 'u09', defaultUnitPrice: 6300 },
-  { projectId: 'p003', userId: 'u10', defaultUnitPrice: 6100 }
-])
-
-const activeAssignProjectId = ref('p001')
-const activeAssignments = computed(() => assignments.filter((a) => a.projectId === activeAssignProjectId.value))
-const unassignedUsers = computed(() => {
-  const assignedIds = new Set(activeAssignments.value.map((a) => a.userId))
-  return users.filter((u) => !assignedIds.has(u.id))
+const s3Users = computed(() => props.users)
+const s3Projects = computed(() => {
+  return [...props.projects].sort((a, b) => {
+    if (a.is_active !== b.is_active) return a.is_active ? -1 : 1
+    if (a.display_order !== b.display_order) return a.display_order - b.display_order
+    return a.name.localeCompare(b.name, 'ja')
+  })
 })
-const newAssign = reactive({ userId: '', defaultUnitPrice: 6000 })
+const s3ActiveProjects = computed(() => s3Projects.value.filter((project) => project.is_active))
+const s3ClosedProjects = computed(() => s3Projects.value.filter((project) => !project.is_active))
+const activeAssignProjectId = ref<number | null>(null)
+
+const s3State = reactive({
+  processingAdd: false,
+  processingRemoveId: null as number | null
+})
+const s3MemberSortMode = ref<S3MemberSortMode>('section_order')
+
+const s3PriceModal = reactive({
+  open: false,
+  assignmentId: null as number | null,
+  userLabel: '',
+  rate: 0,
+  processing: false,
+  error: ''
+})
+
+const newAssign = reactive({
+  userId: null as number | null,
+  defaultUnitPrice: 6000
+})
+
+const formatS3UserLabel = (user: UserRecord) => {
+  const displayName = user.display_name?.trim() || user.name
+  const roleName = user.role_name?.trim() || '未設定'
+  return `${displayName}（${roleName}）`
+}
+
+const activeAssignProject = computed(() => {
+  if (activeAssignProjectId.value === null) return null
+  return s3Projects.value.find((project) => project.id === activeAssignProjectId.value) ?? null
+})
+
+const isActiveAssignProject = computed(() => activeAssignProject.value?.is_active ?? false)
+
+const activeAssignments = computed<S3AssignmentRow[]>(() => {
+  if (activeAssignProjectId.value === null) return []
+
+  return props.project_members
+    .filter((assignment) => assignment.project_id === activeAssignProjectId.value)
+    .map((assignment) => {
+      const user = props.users.find((candidate) => candidate.id === assignment.user_id)
+      return {
+        id: assignment.id,
+        projectId: assignment.project_id,
+        userId: assignment.user_id,
+        defaultUnitPrice: Number(assignment.default_billing_rate) || 0,
+        userLabel: user ? formatS3UserLabel(user) : `不明なメンバー（ID:${assignment.user_id}）`,
+        userIsActive: user?.is_active ?? false,
+        userDisplayOrder: user?.display_order ?? 9999
+      }
+    })
+})
+
+const sortedActiveAssignments = computed(() => {
+  return [...activeAssignments.value].sort((a, b) => {
+    if (a.userIsActive !== b.userIsActive) return a.userIsActive ? -1 : 1
+
+    if (s3MemberSortMode.value === 'unit_price_desc') {
+      if (a.defaultUnitPrice !== b.defaultUnitPrice) return b.defaultUnitPrice - a.defaultUnitPrice
+      if (a.userDisplayOrder !== b.userDisplayOrder) return a.userDisplayOrder - b.userDisplayOrder
+      return a.userLabel.localeCompare(b.userLabel, 'ja')
+    }
+
+    if (a.userDisplayOrder !== b.userDisplayOrder) return a.userDisplayOrder - b.userDisplayOrder
+    if (a.defaultUnitPrice !== b.defaultUnitPrice) return b.defaultUnitPrice - a.defaultUnitPrice
+    return a.userLabel.localeCompare(b.userLabel, 'ja')
+  })
+})
+
+const unassignedUsers = computed(() => {
+  if (activeAssignProjectId.value === null) return []
+  const assignedIds = new Set(activeAssignments.value.map((assignment) => assignment.userId))
+  return s3Users.value
+    .filter((user) => user.is_active)
+    .filter((user) => !assignedIds.has(user.id))
+    .sort((a, b) => {
+      if (a.display_order !== b.display_order) return a.display_order - b.display_order
+      return a.name.localeCompare(b.name, 'ja')
+    })
+})
+
+const s3ServerError = computed(() => {
+  return firstServerError('default_billing_rate') || firstServerError('project') || firstServerError('user')
+})
+
+const selectedClosedProjectValue = computed(() => {
+  if (activeAssignProjectId.value === null) return ''
+  return s3ClosedProjects.value.some((project) => project.id === activeAssignProjectId.value)
+    ? String(activeAssignProjectId.value)
+    : ''
+})
+
+const pickDefaultAssignProjectId = (projects: ProjectRecord[]) => {
+  return projects.find((project) => project.is_active)?.id ?? projects[0]?.id ?? null
+}
+
+activeAssignProjectId.value = pickDefaultAssignProjectId(s3Projects.value)
+
+function selectClosedProject(projectId: string) {
+  if (!projectId) return
+  activeAssignProjectId.value = Number(projectId)
+}
 
 const accountingRows = reactive([
   { item: '売上高', '2025-08': 3600000, '2025-09': 3800000, '2025-10': 3900000, '2025-11': 4100000, '2025-12': 4200000, '2026-01': 3950000, '2026-02': 4050000 },
@@ -1066,28 +1282,132 @@ function hardDeleteProject(project: ProjectRecord) {
   })
 }
 
+function firstInertiaError(source: unknown, key: string) {
+  if (!source || typeof source !== 'object') return ''
+  const value = (source as Record<string, unknown>)[key]
+  if (Array.isArray(value)) return typeof value[0] === 'string' ? value[0] : ''
+  return typeof value === 'string' ? value : ''
+}
+
 function addAssignment() {
   clearErrors('s3')
-  if (!newAssign.userId) {
+  if (!isActiveAssignProject.value) {
+    errors.s3 = '終了案件にはアサインを追加できません。'
+    return
+  }
+  if (activeAssignProjectId.value === null) {
+    errors.s3 = '対象案件を選択してください。'
+    return
+  }
+  if (newAssign.userId === null) {
     errors.s3 = '未アサインメンバーを選択してください。'
     return
   }
-  if (Number.isNaN(Number(newAssign.defaultUnitPrice))) {
-    errors.s3 = 'デフォルト売上単価は数値で入力してください。'
+
+  const nextRate = Number(newAssign.defaultUnitPrice)
+  if (!Number.isInteger(nextRate) || nextRate < 0) {
+    errors.s3 = 'デフォルト売上単価は0以上の整数で入力してください。'
     return
   }
-  assignments.push({ projectId: activeAssignProjectId.value, userId: newAssign.userId, defaultUnitPrice: Number(newAssign.defaultUnitPrice) })
-  newAssign.userId = ''
-  newAssign.defaultUnitPrice = 6000
-  markDirty()
+
+  s3State.processingAdd = true
+  suppressBeforeVisitGuard = true
+
+  router.post('/project_members', {
+    project_member: {
+      project_id: activeAssignProjectId.value,
+      user_id: newAssign.userId,
+      default_billing_rate: nextRate
+    }
+  }, {
+    preserveScroll: true,
+    preserveState: true,
+    onSuccess: () => {
+      newAssign.userId = null
+      newAssign.defaultUnitPrice = 6000
+      clearErrors('s3')
+    },
+    onError: (serverErrors) => {
+      errors.s3 = firstInertiaError(serverErrors, 'default_billing_rate') || firstInertiaError(serverErrors, 'user') || 'アサインを追加できませんでした。'
+    },
+    onFinish: () => {
+      s3State.processingAdd = false
+      suppressBeforeVisitGuard = false
+    }
+  })
 }
 
-function unassignMember(indexInFiltered: number) {
+function openAssignmentPriceModal(assignment: S3AssignmentRow) {
+  if (!isActiveAssignProject.value) return
+  s3PriceModal.assignmentId = assignment.id
+  s3PriceModal.userLabel = assignment.userLabel
+  s3PriceModal.rate = assignment.defaultUnitPrice
+  s3PriceModal.error = ''
+  s3PriceModal.open = true
+}
+
+function closeAssignmentPriceModal() {
+  if (s3PriceModal.processing) return
+  s3PriceModal.open = false
+  s3PriceModal.assignmentId = null
+  s3PriceModal.userLabel = ''
+  s3PriceModal.rate = 0
+  s3PriceModal.error = ''
+}
+
+function saveAssignmentPriceModal() {
+  const assignmentId = s3PriceModal.assignmentId
+  if (!isActiveAssignProject.value || assignmentId === null) return
+
+  const nextRate = Number(s3PriceModal.rate)
+  if (!Number.isInteger(nextRate) || nextRate < 0) {
+    s3PriceModal.error = 'デフォルト売上単価は0以上の整数で入力してください。'
+    return
+  }
+
+  s3PriceModal.error = ''
+  s3PriceModal.processing = true
+  suppressBeforeVisitGuard = true
+
+  router.patch(`/project_members/${assignmentId}`, {
+    project_member: {
+      default_billing_rate: nextRate
+    }
+  }, {
+    preserveScroll: true,
+    preserveState: true,
+    onSuccess: () => {
+      s3PriceModal.processing = false
+      closeAssignmentPriceModal()
+    },
+    onError: (serverErrors) => {
+      s3PriceModal.error = firstInertiaError(serverErrors, 'default_billing_rate') || '単価を更新できませんでした。'
+    },
+    onFinish: () => {
+      s3PriceModal.processing = false
+      suppressBeforeVisitGuard = false
+    }
+  })
+}
+
+function unassignMember(assignment: S3AssignmentRow) {
+  if (!isActiveAssignProject.value) return
   if (!window.confirm('アサイン解除してよろしいですか？')) return
-  const item = activeAssignments.value[indexInFiltered]
-  const realIndex = assignments.findIndex((a) => a.projectId === item.projectId && a.userId === item.userId)
-  if (realIndex >= 0) assignments.splice(realIndex, 1)
-  markDirty()
+
+  s3State.processingRemoveId = assignment.id
+  suppressBeforeVisitGuard = true
+
+  router.delete(`/project_members/${assignment.id}`, {
+    preserveScroll: true,
+    preserveState: true,
+    onError: () => {
+      errors.s3 = 'アサインを解除できませんでした。'
+    },
+    onFinish: () => {
+      s3State.processingRemoveId = null
+      suppressBeforeVisitGuard = false
+    }
+  })
 }
 
 function showToast(type: 'success' | 'error', message: string) {
@@ -1248,11 +1568,6 @@ function validateSection(section: string) {
     if (invalid) errors.s1 = '名前・メールアドレスは必須です。'
     return !invalid
   }
-  if (section === 's3') {
-    const invalid = assignments.some((a) => Number.isNaN(Number(a.defaultUnitPrice)))
-    if (invalid) errors.s3 = 'デフォルト売上単価は数値で入力してください。'
-    return !invalid
-  }
   if (section === 's7') {
     const invalid = memberCostRows.some((row) =>
       visibleMonths.value.some((m) =>
@@ -1350,13 +1665,38 @@ watch(
 
 watch(
   () => props.projects,
-  () => {
+  (nextProjects) => {
     syncSection2Projects()
+
+    if (nextProjects.length === 0) {
+      activeAssignProjectId.value = null
+      return
+    }
+
+    if (
+      activeAssignProjectId.value === null ||
+      !nextProjects.some((project) => project.id === activeAssignProjectId.value)
+    ) {
+      activeAssignProjectId.value = pickDefaultAssignProjectId(nextProjects)
+    }
   },
   { deep: true }
 )
 
-watch([users, projects, assignments, expenses, adjustments, accountingRows, memberCostRows, officerCostRows], () => {
+watch(
+  () => props.project_members,
+  (nextProjectMembers) => {
+    if (
+      s3PriceModal.assignmentId !== null &&
+      !nextProjectMembers.some((assignment) => assignment.id === s3PriceModal.assignmentId)
+    ) {
+      closeAssignmentPriceModal()
+    }
+  },
+  { deep: true }
+)
+
+watch([users, projects, expenses, adjustments, accountingRows, memberCostRows, officerCostRows], () => {
   if (skipDirtyTracking) return
   markDirty()
 }, { deep: true })

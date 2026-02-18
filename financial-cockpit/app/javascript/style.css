@@ -209,6 +209,132 @@ body,
   color: #991b1b;
 }
 
+.master-s3 {
+  border-color: #dbe4ff;
+}
+
+.master-s3-tabs {
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.master-s3-active-tabs {
+  border: 1px solid #dbeafe;
+  border-radius: 0.5rem;
+  background: #f8fbff;
+  padding: 0.625rem;
+  min-width: 0;
+}
+
+.master-s3-tab-label {
+  color: #1e3a8a;
+  font-size: 0.75rem;
+  font-weight: 700;
+  margin: 0 0 0.5rem;
+}
+
+.master-s3-active-scroll {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+}
+
+.master-s3-tab {
+  align-items: center;
+  cursor: pointer;
+  display: inline-flex;
+  gap: 0.4rem;
+  white-space: nowrap;
+}
+
+.master-s3-closed-slot {
+  align-self: start;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 0.5rem;
+  padding: 0.625rem;
+}
+
+.master-s3-closed-head {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.4rem;
+}
+
+.master-s3-closed-count {
+  background: #ffedd5;
+  border: 1px solid #fdba74;
+  border-radius: 9999px;
+  color: #9a3412;
+  font-size: 0.65rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0.2rem 0.45rem;
+}
+
+.master-s3-closed-select {
+  width: 100%;
+}
+
+.master-s3-tab-empty {
+  color: #64748b;
+  font-size: 0.75rem;
+  margin: 0.2rem 0;
+}
+
+.master-s3-tools {
+  align-items: center;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.master-s3-sort-wrap {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.5rem;
+}
+
+.master-s3-sort-label {
+  color: #334155;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.master-s3-sort-select {
+  min-width: 13rem;
+}
+
+.master-s3-readonly-note {
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  border-radius: 0.5rem;
+  color: #9a3412;
+  font-size: 0.75rem;
+  margin: 0;
+  padding: 0.625rem 0.75rem;
+}
+
+.master-s3-inactive-badge {
+  background: #e2e8f0;
+  border-radius: 9999px;
+  color: #475569;
+  display: inline-flex;
+  font-size: 0.65rem;
+  font-weight: 700;
+  margin-top: 0.2rem;
+  padding: 0.15rem 0.45rem;
+}
+
+@media (min-width: 1024px) {
+  .master-s3-tabs {
+    align-items: start;
+    grid-template-columns: minmax(0, 1fr) 15rem;
+  }
+}
+
 @media (min-width: 1024px) {
   .master-s2-head {
     display: grid;
