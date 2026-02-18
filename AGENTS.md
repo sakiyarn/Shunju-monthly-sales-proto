@@ -23,3 +23,10 @@
 - セクション1で確立した Inertia CRUD パターンを、セクション2〜10にも順次適用する。
 - 画面表示責務は `MasterController`、更新責務はリソース別 Controller に分離する。
 - 既存 UI の見た目・操作感はできるだけ維持し、データ取得を props 化して置き換える。
+
+## 5. スコープ運用（クロスチャット共通）
+- マスタデータ画面を触る場合は、作業開始前に必ず `docs/master-migration-scope.md` を読む。
+- タスク開始時に「今回の対象セクション番号（例: S3）」を明示してから着手する。
+- スコープ外の変更は実装せず、必要があれば影響調査メモとして残す。
+- 新しいチャットを開始する場合は `docs/templates/master-section-kickoff.md` をコピーして前提を共有する。
+- PR作成時は `docs/templates/master-section-pr-checklist.md` を使い、非対象セクションを明示する。
