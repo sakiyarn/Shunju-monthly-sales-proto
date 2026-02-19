@@ -1,11 +1,11 @@
 <template>
   <main class="mx-auto max-w-[1400px] space-y-6 px-6 py-8">
     <div
-      class="fixed right-4 top-20 z-40 rounded-full border px-3 py-1 text-xs font-semibold shadow-sm transition-all duration-200"
-      :class="hasUnsavedChanges ? 'border-amber-300 bg-amber-100 text-amber-900' : 'border-emerald-300 bg-emerald-100 text-emerald-900'"
+      v-if="hasUnsavedChanges"
+      class="fixed right-4 top-20 z-40 rounded-full border border-amber-300 bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-900 shadow-sm transition-all duration-200"
       aria-live="polite"
     >
-      {{ hasUnsavedChanges ? '未保存の変更あり' : '保存済み' }}
+      未保存の変更あり
     </div>
 
     <section class="card">
@@ -323,77 +323,112 @@
       </p>
     </section>
 
-    <section class="card transition-colors duration-200" :class="s5Edited ? 'border-amber-300 bg-amber-50/60' : ''">
-      <div class="mb-2 flex items-center gap-2">
-        <h2 class="card-title mb-0">📊 セクション5: 請求稼働実績（案件×メンバー×月）</h2>
-        <span
-          class="rounded-full border px-2 py-0.5 text-xs font-semibold"
-          :class="s5Edited ? 'border-amber-300 bg-amber-100 text-amber-900' : 'border-slate-200 bg-slate-100 text-slate-600'"
-        >
-          {{ s5Edited ? '未保存' : '保存済み' }}
-        </span>
-      </div>
-      <div class="mb-3 flex flex-wrap items-center gap-2">
-        <div class="flex flex-wrap gap-2">
+    <section class="card master-s5-card transition-colors duration-200" :class="s5Edited ? 'border-amber-300 bg-amber-50/60' : ''">
+      <div class="master-s5-head">
+        <div class="master-s5-head-main">
+          <h2 class="card-title mb-0">📊 セクション5: 請求稼働実績（案件×メンバー×月）</h2>
+          <div class="master-s5-status">
+            <span
+              v-if="s5Edited"
+              class="inline-flex items-center rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900"
+            >
+              未保存
+            </span>
+            <span class="master-s5-target-badge">
+              {{ activeWorkProject ? `対象案件: ${activeWorkProject.name}` : '対象案件なし' }}
+            </span>
+          </div>
+        </div>
+        <div class="master-s5-head-actions">
+          <p class="master-s5-head-note">操作ミス時は「未保存を破棄」で入力前の状態に戻せます。</p>
           <button
-            v-for="p in s5ActiveProjects"
-            :key="`work-active-${p.id}`"
-            class="tab"
-            :class="activeWorkProjectId === p.id ? 'tab-active' : ''"
-            @click="attemptSwitchS5Project(p.id)"
+            class="master-s5-reset-btn"
+            :disabled="!s5Edited || s5State.processing"
+            @click="resetS5DraftWithConfirm"
           >
-            {{ p.name }}
+            未保存を破棄
           </button>
         </div>
-        <div v-if="s5ClosedProjects.length > 0" class="ml-auto min-w-56">
-          <select class="input w-full" :value="selectedS5ClosedProjectValue" @change="selectS5ClosedProject(($event.target as HTMLSelectElement).value)">
-            <option value="">終了案件を表示</option>
-            <option v-for="p in s5ClosedProjects" :key="`work-closed-${p.id}`" :value="String(p.id)">{{ p.name }}</option>
-          </select>
+      </div>
+
+      <div class="master-s5-toolbar">
+        <div class="master-s5-pane">
+          <p class="master-s5-pane-label">案件</p>
+          <div class="flex flex-wrap gap-2">
+            <button
+              v-for="p in s5ActiveProjects"
+              :key="`work-active-${p.id}`"
+              class="tab cursor-pointer"
+              :class="activeWorkProjectId === p.id ? 'tab-active' : ''"
+              @click="attemptSwitchS5Project(p.id)"
+            >
+              {{ p.name }}
+            </button>
+          </div>
+          <div v-if="s5ClosedProjects.length > 0" class="mt-2 min-w-56">
+            <select class="input w-full" :value="selectedS5ClosedProjectValue" @change="selectS5ClosedProject(($event.target as HTMLSelectElement).value)">
+              <option value="">終了案件を表示</option>
+              <option v-for="p in s5ClosedProjects" :key="`work-closed-${p.id}`" :value="String(p.id)">{{ p.name }}</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="master-s5-pane master-s5-pane-right">
+          <p class="master-s5-pane-label">表示設定</p>
+          <div class="flex flex-wrap items-center gap-2">
+            <label class="text-sm text-slate-700">
+              表示軸
+              <select class="input ml-2" :value="s5DisplayMode" @change="onS5DisplayModeChanged(($event.target as HTMLSelectElement).value)">
+                <option value="calendar">暦年（1月〜12月）</option>
+                <option value="fiscal">決算年度（7月〜翌6月）</option>
+              </select>
+            </label>
+            <label v-if="s5DisplayMode === 'calendar'" class="text-sm text-slate-700">
+              年
+              <select class="input ml-2" :value="s5CalendarYear" @change="onS5CalendarYearChanged(($event.target as HTMLSelectElement).value)">
+                <option v-for="year in s5CalendarYears" :key="`s5-calendar-${year}`" :value="year">{{ year }}年</option>
+              </select>
+            </label>
+            <label v-else class="text-sm text-slate-700">
+              決算年度
+              <select class="input ml-2" :value="s5FiscalYear" @change="onS5FiscalYearChanged(($event.target as HTMLSelectElement).value)">
+                <option v-for="year in s5FiscalYears" :key="`s5-fiscal-${year}`" :value="year">{{ formatFiscalTermLabel(year) }}</option>
+              </select>
+            </label>
+          </div>
+          <div class="master-s5-shortcuts" aria-label="S5 keyboard shortcuts">
+            <span class="master-s5-shortcut-chip">Enter: 編集開始 / 確定して下へ</span>
+            <span class="master-s5-shortcut-chip">Tab: 右セルへ移動</span>
+            <span class="master-s5-shortcut-chip">矢印キー: セル移動</span>
+          </div>
         </div>
       </div>
-      <div class="mb-3 flex flex-wrap items-center gap-2">
-        <label class="text-sm text-slate-700">
-          表示軸
-          <select class="input ml-2" :value="s5DisplayMode" @change="onS5DisplayModeChanged(($event.target as HTMLSelectElement).value)">
-            <option value="calendar">暦年（1月〜12月）</option>
-            <option value="fiscal">決算年度（7月〜翌6月）</option>
-          </select>
-        </label>
-        <label v-if="s5DisplayMode === 'calendar'" class="text-sm text-slate-700">
-          年
-          <select class="input ml-2" :value="s5CalendarYear" @change="onS5CalendarYearChanged(($event.target as HTMLSelectElement).value)">
-            <option v-for="year in s5CalendarYears" :key="`s5-calendar-${year}`" :value="year">{{ year }}年</option>
-          </select>
-        </label>
-        <label v-else class="text-sm text-slate-700">
-          決算年度
-          <select class="input ml-2" :value="s5FiscalYear" @change="onS5FiscalYearChanged(($event.target as HTMLSelectElement).value)">
-            <option v-for="year in s5FiscalYears" :key="`s5-fiscal-${year}`" :value="year">{{ formatFiscalTermLabel(year) }}</option>
-          </select>
-        </label>
-      </div>
+
       <p v-if="!activeWorkProject" class="mb-3 text-sm text-slate-500">表示対象の案件がありません。</p>
       <p v-else-if="!isActiveWorkProject" class="mb-3 text-sm text-slate-500">終了案件は閲覧専用です。</p>
       <p v-if="errors.s5" class="mb-3 error-msg whitespace-pre-line">{{ errors.s5 }}</p>
       <div v-if="s5MonthKeys.length === 0" class="rounded border border-slate-200 p-3 text-sm text-slate-500">
         表示可能な月データがありません。
       </div>
-      <div v-else class="ag-theme-quartz h-[320px] w-full">
-        <AgGridVue
-          class="s5-grid h-full w-full"
-          :rowData="activeWorkProjectId !== null ? (workRowsByProject[String(activeWorkProjectId)] ?? []) : []"
-          :columnDefs="workColDefs"
-          :defaultColDef="defaultColDef"
-          :enterNavigatesVertically="true"
-          :enterNavigatesVerticallyAfterEdit="true"
-          @grid-ready="onWorkGridReady"
-          @cell-value-changed="onWorkCellChanged"
-        />
+      <div v-else class="master-s5-grid-wrap">
+        <div class="ag-theme-quartz h-[340px] w-full">
+          <AgGridVue
+            class="s5-grid h-full w-full"
+            :rowData="activeWorkProjectId !== null ? (workRowsByProject[String(activeWorkProjectId)] ?? []) : []"
+            :columnDefs="workColDefs"
+            :defaultColDef="defaultColDef"
+            :enterNavigatesVertically="false"
+            :enterNavigatesVerticallyAfterEdit="true"
+            @grid-ready="onWorkGridReady"
+            @cell-value-changed="onWorkCellChanged"
+          />
+        </div>
       </div>
-      <button class="btn-save" :disabled="s5State.processing || !isActiveWorkProject || s5MonthKeys.length === 0" @click="saveSection('s5')">
-        {{ s5Edited ? '保存（未保存あり）' : '保存' }}
-      </button>
+      <div class="master-s5-footer">
+        <button class="btn-save cursor-pointer" :disabled="s5State.processing || !isActiveWorkProject || s5MonthKeys.length === 0" @click="saveSection('s5')">
+          {{ s5Edited ? '保存（未保存あり）' : '保存' }}
+        </button>
+      </div>
     </section>
 
     <section class="card">
@@ -1278,7 +1313,16 @@ const createS5ChildColumn = (monthKey: string, kind: S5MetricKind): ColDef => ({
   field: s5ChildField(monthKey, kind),
   headerName: kind === 'hours' ? '稼働(h)' : '単価(円)',
   minWidth: kind === 'hours' ? 80 : 110,
+  width: kind === 'hours' ? 88 : 120,
+  maxWidth: kind === 'hours' ? 96 : 130,
   editable: () => isActiveWorkProject.value,
+  cellEditor: 'agNumberCellEditor',
+  cellEditorParams: () => ({
+    min: 0,
+    max: kind === 'hours' ? 999 : 99_999,
+    step: kind === 'hours' ? 1 : 10,
+    showStepperButtons: true
+  }),
   valueGetter: (params: ValueGetterParams<Record<string, unknown>>) => {
     const normalized = normalizeS5CellValue(params.data?.[monthKey])
     return kind === 'hours' ? normalized.hours : normalized.unitPrice
@@ -1295,9 +1339,6 @@ const createS5ChildColumn = (monthKey: string, kind: S5MetricKind): ColDef => ({
     params.data[monthKey] = normalized
     return true
   },
-  valueFormatter: kind === 'unitPrice'
-    ? (params: ValueFormatterParams<Record<string, unknown>>) => Number(params.value ?? 0).toLocaleString('ja-JP')
-    : undefined,
   cellClass: (params: CellClassParams<Record<string, unknown>>) => {
     if (!params.data || activeWorkProjectId.value === null) return ''
     const userId = Number(params.data.userId)
@@ -2177,6 +2218,15 @@ function onS5FiscalYearChanged(value: string) {
     calendarYear: s5CalendarYear.value,
     fiscalYear: year
   })
+}
+
+function resetS5DraftWithConfirm() {
+  if (!s5Edited.value || s5State.processing) return
+
+  const confirmed = window.confirm('未保存の変更を破棄して元の状態に戻します。よろしいですか？\nこの操作は保存されません。')
+  if (!confirmed) return
+
+  discardS5DraftAndRun(() => {})
 }
 
 function onWorkCellChanged(event: { colDef?: { field?: string }; data?: Record<string, unknown> }) {
