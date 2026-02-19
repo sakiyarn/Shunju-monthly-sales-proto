@@ -18,6 +18,7 @@ Rails.application.routes.draw do
     end
   end
   resources :project_members, only: %i[create update destroy]
+  post "/billing_work_logs/bulk_upsert", to: "billing_work_logs#bulk_upsert"
   resource :monthly_accounting_data_import, only: :create
   resources :monthly_accounting_data_histories, only: [] do
     post :restore, on: :member

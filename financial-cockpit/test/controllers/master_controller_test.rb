@@ -105,4 +105,43 @@ class MasterControllerTest < ActionDispatch::IntegrationTest
     assert_not_nil response_history
     assert_equal "import", response_history["event_type"]
   end
+
+  test "master includes s5 month keys and billing work logs props" do
+    project = Project.create!(name: "S5案件", is_active: true)
+    user = User.create!(
+      name: "S5メンバー",
+      email: "master-s5-props@example.com",
+      password: "password123",
+      password_confirmation: "password123",
+      system_role: "member",
+      is_active: true
+    )
+    ProjectMember.create!(project: project, user: user, default_billing_rate: 7_000)
+    BillingWorkLog.create!(
+      project: project,
+      user: user,
+      work_month: Date.new(2026, 1, 1),
+      billed_hours: 123,
+      billing_rate: 8_000
+    )
+
+    get master_path, headers: { "X-Inertia" => "true" }
+
+    assert_response :success
+
+    payload = JSON.parse(response.body)
+    s5_month_keys = payload.dig("props", "s5_month_keys")
+    billing_work_logs = payload.dig("props", "billing_work_logs")
+
+    assert_includes s5_month_keys, "2026-01"
+    assert billing_work_logs.present?
+
+    response_row = billing_work_logs.find do |row|
+      row["project_id"] == project.id && row["user_id"] == user.id && row["work_month"] == "2026-01"
+    end
+
+    assert_not_nil response_row
+    assert_equal 123, response_row["billed_hours"]
+    assert_equal 8_000, response_row["billing_rate"]
+  end
 end

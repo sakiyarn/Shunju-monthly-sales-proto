@@ -317,13 +317,34 @@
 
     <section class="card">
       <h2 class="card-title">📊 セクション5: 請求稼働実績（案件×メンバー×月）</h2>
-      <div class="mb-3 flex flex-wrap gap-2">
-        <button v-for="p in projects" :key="`work-${p.id}`" class="tab" :class="activeWorkProjectId === p.id ? 'tab-active' : ''" @click="activeWorkProjectId = p.id">{{ p.name }}</button>
+      <div class="mb-3 flex flex-wrap items-center gap-2">
+        <div class="flex flex-wrap gap-2">
+          <button v-for="p in s5ActiveProjects" :key="`work-active-${p.id}`" class="tab" :class="activeWorkProjectId === p.id ? 'tab-active' : ''" @click="activeWorkProjectId = p.id">{{ p.name }}</button>
+        </div>
+        <div v-if="s5ClosedProjects.length > 0" class="ml-auto min-w-56">
+          <select class="input w-full" :value="selectedS5ClosedProjectValue" @change="selectS5ClosedProject(($event.target as HTMLSelectElement).value)">
+            <option value="">終了案件を表示</option>
+            <option v-for="p in s5ClosedProjects" :key="`work-closed-${p.id}`" :value="String(p.id)">{{ p.name }}</option>
+          </select>
+        </div>
       </div>
-      <div class="ag-theme-quartz h-[320px] w-full">
-        <AgGridVue class="h-full w-full" :rowData="workRowsByProject[activeWorkProjectId]" :columnDefs="workColDefs" :defaultColDef="defaultColDef" @cell-value-changed="onWorkCellChanged" />
+      <p v-if="!activeWorkProject" class="mb-3 text-sm text-slate-500">表示対象の案件がありません。</p>
+      <p v-else-if="!isActiveWorkProject" class="mb-3 text-sm text-slate-500">終了案件は閲覧専用です。</p>
+      <p v-if="errors.s5" class="mb-3 error-msg whitespace-pre-line">{{ errors.s5 }}</p>
+      <div v-if="s5MonthKeys.length === 0" class="rounded border border-slate-200 p-3 text-sm text-slate-500">
+        表示可能な月データがありません。
       </div>
-      <button class="btn-save" @click="saveSection('s5')">保存</button>
+      <div v-else class="ag-theme-quartz h-[320px] w-full">
+        <AgGridVue
+          class="h-full w-full"
+          :rowData="activeWorkProjectId !== null ? (workRowsByProject[String(activeWorkProjectId)] ?? []) : []"
+          :columnDefs="workColDefs"
+          :defaultColDef="defaultColDef"
+          @grid-ready="onWorkGridReady"
+          @cell-value-changed="onWorkCellChanged"
+        />
+      </div>
+      <button class="btn-save" :disabled="s5State.processing || !isActiveWorkProject || s5MonthKeys.length === 0" @click="saveSection('s5')">保存</button>
     </section>
 
     <section class="card">
@@ -503,7 +524,7 @@
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { router, usePage } from '@inertiajs/vue3'
 import { AgGridVue } from 'ag-grid-vue3'
-import type { ColDef, ColGroupDef, ValueFormatterParams } from 'ag-grid-community'
+import type { ColDef, ColGroupDef, GridApi, GridReadyEvent, ValueFormatterParams } from 'ag-grid-community'
 import PairCellEditor from '../../components/PairCellEditor.vue'
 import 'ag-grid-community/styles/ag-grid.css'
 import 'ag-grid-community/styles/ag-theme-quartz.css'
@@ -541,6 +562,14 @@ interface ProjectMemberRecord {
   project_id: number
   user_id: number
   default_billing_rate: number | string
+}
+
+interface BillingWorkLogRecord {
+  project_id: number
+  user_id: number
+  work_month: string
+  billed_hours: number
+  billing_rate: number
 }
 
 interface MonthlyAccountingDataRecord {
@@ -623,6 +652,8 @@ const props = defineProps<{
   roles: RoleOption[]
   projects: ProjectRecord[]
   project_members: ProjectMemberRecord[]
+  s5_month_keys: string[]
+  billing_work_logs: BillingWorkLogRecord[]
   monthly_accounting_data: MonthlyAccountingDataRecord[]
   monthly_accounting_histories: MonthlyAccountingHistoryRecord[]
   initialData?: Record<string, unknown>
@@ -640,6 +671,7 @@ type UserRole = 'admin' | 'member'
 interface User { id: string; name: string; email: string; role: UserRole }
 interface DemoProject { id: string; name: string; client: string; status: 'open' | 'closed' }
 interface MonthDef { key: string; label: string; month: number }
+interface S5CellValue { hours: number; unitPrice: number }
 interface Expense { id: string; month: string; name: string; amount: number; projectIds: string[] }
 interface Adjustment { id: string; userId: string; projectId: string; fromMonth: string; toMonth: string; amount: number; memo: string }
 interface PersistedBillingAdjustment {
@@ -656,7 +688,7 @@ interface PersistedBillingAdjustment {
 const formatYen = (v: number) => new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY', maximumFractionDigits: 0 }).format(Number(v) || 0)
 const BILLING_ADJUSTMENTS_STORAGE_KEY = 'proto.billing-adjustments.v1'
 
-const monthMaster: MonthDef[] = [
+const legacyMonthMaster: MonthDef[] = [
   { key: '2025-08', label: '2025年8月', month: 8 },
   { key: '2025-09', label: '2025年9月', month: 9 },
   { key: '2025-10', label: '2025年10月', month: 10 },
@@ -666,7 +698,7 @@ const monthMaster: MonthDef[] = [
   { key: '2026-02', label: '2026年2月', month: 2 }
 ]
 
-const visibleMonths = computed(() => monthMaster)
+const visibleMonths = computed(() => legacyMonthMaster)
 
 const users = reactive<User[]>([
   { id: 'u01', name: '田中 太郎', email: 'tanaka@example.com', role: 'admin' },
@@ -893,20 +925,86 @@ const accountingRows = computed<Record<string, string | number | null>[]>(() => 
   })
 })
 
-const activeWorkProjectId = ref('p001')
+const s5Projects = computed(() => [...s3Projects.value])
+const s5ActiveProjects = computed(() => s5Projects.value.filter((project) => project.is_active))
+const s5ClosedProjects = computed(() => s5Projects.value.filter((project) => !project.is_active))
+const s5MonthKeys = computed(() => [...new Set(props.s5_month_keys)].sort())
+const activeWorkProjectId = ref<number | null>(null)
+const workGridApi = ref<GridApi | null>(null)
+const s5State = reactive({
+  processing: false
+})
 const workRowsByProject = reactive<Record<string, Record<string, unknown>[]>>({})
 
-const defaultHours = [120, 125, 130, 132, 128, 118, 120]
-const seedMemberIds = ['u03', 'u04', 'u05', 'u06', 'u07', 'u08', 'u09', 'u10']
-projects.forEach((p, projectIdx) => {
-  workRowsByProject[p.id] = seedMemberIds.map((uid, rowIdx) => {
-    const row: Record<string, unknown> = { member: userNameById(uid) }
-    monthMaster.forEach((m, idx) => {
-      row[m.key] = { hours: defaultHours[idx] - rowIdx * 2 + projectIdx, unitPrice: 6200 + projectIdx * 100 }
-    })
-    return row
-  })
+const activeWorkProject = computed(() => {
+  if (activeWorkProjectId.value === null) return null
+  return s5Projects.value.find((project) => project.id === activeWorkProjectId.value) ?? null
 })
+
+const isActiveWorkProject = computed(() => activeWorkProject.value?.is_active ?? false)
+
+const selectedS5ClosedProjectValue = computed(() => {
+  if (activeWorkProjectId.value === null) return ''
+  return s5ClosedProjects.value.some((project) => project.id === activeWorkProjectId.value)
+    ? String(activeWorkProjectId.value)
+    : ''
+})
+
+const pickDefaultWorkProjectId = (projects: ProjectRecord[]) => {
+  return projects.find((project) => project.is_active)?.id ?? projects[0]?.id ?? null
+}
+
+const normalizeS5CellValue = (value: unknown): S5CellValue => {
+  if (!value || typeof value !== 'object') return { hours: 0, unitPrice: 0 }
+  const candidate = value as Partial<{ hours: unknown; unitPrice: unknown }>
+  const hours = Number.parseInt(String(candidate.hours ?? 0), 10)
+  const unitPrice = Number.parseInt(String(candidate.unitPrice ?? 0), 10)
+  return {
+    hours: Number.isFinite(hours) ? hours : 0,
+    unitPrice: Number.isFinite(unitPrice) ? unitPrice : 0
+  }
+}
+
+const rebuildWorkRowsByProject = () => {
+  Object.keys(workRowsByProject).forEach((key) => {
+    delete workRowsByProject[key]
+  })
+
+  const userById = new Map(props.users.map((user) => [user.id, user]))
+  const logsByKey = new Map(props.billing_work_logs.map((log) => [
+    `${log.project_id}:${log.user_id}:${log.work_month}`,
+    { hours: Number(log.billed_hours) || 0, unitPrice: Number(log.billing_rate) || 0 }
+  ]))
+
+  s5Projects.value.forEach((project) => {
+    const assignments = props.project_members
+      .filter((assignment) => assignment.project_id === project.id)
+      .sort((a, b) => {
+        const userA = userById.get(a.user_id)
+        const userB = userById.get(b.user_id)
+        const orderA = userA?.display_order ?? 9999
+        const orderB = userB?.display_order ?? 9999
+        if (orderA !== orderB) return orderA - orderB
+        return (userA?.name ?? '').localeCompare(userB?.name ?? '', 'ja')
+      })
+
+    workRowsByProject[String(project.id)] = assignments.map((assignment) => {
+      const user = userById.get(assignment.user_id)
+      const row: Record<string, unknown> = {
+        userId: assignment.user_id,
+        member: user?.name ?? `不明なメンバー（ID:${assignment.user_id}）`
+      }
+
+      s5MonthKeys.value.forEach((monthKey) => {
+        row[monthKey] = logsByKey.get(`${project.id}:${assignment.user_id}:${monthKey}`) ?? { hours: 0, unitPrice: 0 }
+      })
+      return row
+    })
+  })
+}
+
+activeWorkProjectId.value = pickDefaultWorkProjectId(s5Projects.value)
+rebuildWorkRowsByProject()
 
 const businessDaysRow = reactive<Record<string, unknown>>({ item: '営業日数', '2025-08': 22, '2025-09': 20, '2025-10': 22, '2025-11': 20, '2025-12': 20, '2026-01': 18, '2026-02': 20 })
 
@@ -988,13 +1086,13 @@ const accountingColDefs = computed<ColDef[]>(() => [
 
 const workColDefs = computed<ColDef[]>(() => [
   { field: 'member', headerName: 'メンバー', pinned: 'left', editable: false, minWidth: 180 },
-  ...visibleMonths.value.map((m) => ({
-    headerName: m.label,
-    field: m.key,
-    editable: true,
+  ...s5MonthKeys.value.map((monthKey) => ({
+    headerName: formatMonthLabel(monthKey),
+    field: monthKey,
+    editable: () => isActiveWorkProject.value,
     cellEditor: PairCellEditor,
     valueFormatter: (params: ValueFormatterParams) => {
-      const val = params.value as { hours: number; unitPrice: number }
+      const val = normalizeS5CellValue(params.value)
       if (!val) return ''
       return `${val.hours}h / ${formatYen(val.unitPrice)}`
     }
@@ -1733,9 +1831,25 @@ function onCsvDrop(event: DragEvent) {
   if (file) void processCsv(file)
 }
 
+function scrollWorkGridToLatestMonth() {
+  const latestMonthKey = s5MonthKeys.value[s5MonthKeys.value.length - 1]
+  if (!latestMonthKey || !workGridApi.value) return
+  workGridApi.value.ensureColumnVisible(latestMonthKey)
+}
+
+function onWorkGridReady(event: GridReadyEvent) {
+  workGridApi.value = event.api
+  scrollWorkGridToLatestMonth()
+}
+
+function selectS5ClosedProject(projectId: string) {
+  if (!projectId) return
+  activeWorkProjectId.value = Number(projectId)
+}
+
 function onWorkCellChanged(event: { colDef?: { field?: string }; data?: Record<string, unknown> }) {
   const key = event.colDef?.field
-  if (!key || !monthMaster.find((m) => m.key === key)) {
+  if (!key || !s5MonthKeys.value.includes(key)) {
     markDirty()
     return
   }
@@ -1744,16 +1858,7 @@ function onWorkCellChanged(event: { colDef?: { field?: string }; data?: Record<s
     markDirty()
     return
   }
-  const prevMonth = monthMaster[monthMaster.findIndex((m) => m.key === key) - 1]
-  if (!prevMonth) {
-    markDirty()
-    return
-  }
-  const currentValue = row[key] as { hours: number; unitPrice: number }
-  const prevValue = row[prevMonth.key] as { hours: number; unitPrice: number }
-  if (currentValue && prevValue && (!currentValue.unitPrice || currentValue.unitPrice <= 0)) {
-    currentValue.unitPrice = prevValue.unitPrice
-  }
+  row[key] = normalizeS5CellValue(row[key])
   markDirty()
 }
 
@@ -1863,6 +1968,40 @@ function validateSection(section: string) {
     if (invalid) errors.s1 = '名前・メールアドレスは必須です。'
     return !invalid
   }
+  if (section === 's5') {
+    if (activeWorkProjectId.value === null) {
+      errors.s5 = '対象案件を選択してください。'
+      return false
+    }
+    if (!isActiveWorkProject.value) {
+      errors.s5 = '終了案件は閲覧専用です。'
+      return false
+    }
+    if (s5MonthKeys.value.length === 0) {
+      errors.s5 = '保存対象の月データがありません。'
+      return false
+    }
+
+    const rows = workRowsByProject[String(activeWorkProjectId.value)] ?? []
+    const messages: string[] = []
+    rows.forEach((row) => {
+      const member = String(row.member ?? '不明メンバー')
+      s5MonthKeys.value.forEach((monthKey) => {
+        const value = normalizeS5CellValue(row[monthKey])
+        if (!Number.isInteger(value.hours) || value.hours < 0 || value.hours > 999) {
+          messages.push(`${member} ${formatMonthLabel(monthKey)} 稼働時間は0〜999の整数で入力してください`)
+        }
+        if (!Number.isInteger(value.unitPrice) || value.unitPrice < 0 || value.unitPrice > 99_999 || value.unitPrice % 10 !== 0) {
+          messages.push(`${member} ${formatMonthLabel(monthKey)} 請求単価は0〜99,999の10円単位で入力してください`)
+        }
+      })
+    })
+    if (messages.length > 0) {
+      errors.s5 = messages.slice(0, 5).join('\n')
+      return false
+    }
+    return true
+  }
   if (section === 's7') {
     const invalid = memberCostRows.some((row) =>
       visibleMonths.value.some((m) =>
@@ -1908,11 +2047,63 @@ function validateSection(section: string) {
 function saveSection(section: string) {
   const ok = validateSection(section)
   if (!ok) return
+  if (section === 's5') {
+    void submitS5()
+    return
+  }
   if (section === 's10') {
     persistBillingAdjustments()
   }
   showToast('success', `${section.toUpperCase()} を保存しました`)
   dirty.value = false
+}
+
+function submitS5() {
+  if (activeWorkProjectId.value === null) return
+
+  const rows = workRowsByProject[String(activeWorkProjectId.value)] ?? []
+  const entries = rows.flatMap((row) => {
+    const userId = Number(row.userId)
+    if (!Number.isInteger(userId)) return []
+    return s5MonthKeys.value.map((monthKey) => {
+      const value = normalizeS5CellValue(row[monthKey])
+      return {
+        user_id: userId,
+        work_month: monthKey,
+        billed_hours: value.hours,
+        billing_rate: value.unitPrice
+      }
+    })
+  })
+
+  s5State.processing = true
+  suppressBeforeVisitGuard = true
+  clearErrors('s5')
+
+  router.post('/billing_work_logs/bulk_upsert', {
+    project_id: activeWorkProjectId.value,
+    entries
+  }, {
+    preserveScroll: true,
+    preserveState: true,
+    onSuccess: () => {
+      dirty.value = false
+      clearErrors('s5')
+    },
+    onError: (serverErrors) => {
+      errors.s5 = firstInertiaError(serverErrors, 'entries') ||
+        firstInertiaError(serverErrors, 'project') ||
+        firstInertiaError(serverErrors, 'billing_rate') ||
+        firstInertiaError(serverErrors, 'billed_hours') ||
+        firstInertiaError(serverErrors, 'work_month') ||
+        firstInertiaError(serverErrors, 'user_id') ||
+        'S5を保存できませんでした。'
+    },
+    onFinish: () => {
+      s5State.processing = false
+      suppressBeforeVisitGuard = false
+    }
+  })
 }
 
 const beforeUnload = (event: BeforeUnloadEvent) => {
@@ -1965,6 +2156,7 @@ watch(
 
     if (nextProjects.length === 0) {
       activeAssignProjectId.value = null
+      activeWorkProjectId.value = null
       return
     }
 
@@ -1973,6 +2165,13 @@ watch(
       !nextProjects.some((project) => project.id === activeAssignProjectId.value)
     ) {
       activeAssignProjectId.value = pickDefaultAssignProjectId(nextProjects)
+    }
+
+    if (
+      activeWorkProjectId.value === null ||
+      !nextProjects.some((project) => project.id === activeWorkProjectId.value)
+    ) {
+      activeWorkProjectId.value = pickDefaultWorkProjectId(nextProjects)
     }
   },
   { deep: true }
@@ -1987,6 +2186,17 @@ watch(
     ) {
       closeAssignmentPriceModal()
     }
+  },
+  { deep: true }
+)
+
+watch(
+  [() => props.project_members, () => props.billing_work_logs, () => props.s5_month_keys, () => props.projects, () => props.users],
+  () => {
+    rebuildWorkRowsByProject()
+    window.setTimeout(() => {
+      scrollWorkGridToLatestMonth()
+    }, 0)
   },
   { deep: true }
 )
@@ -2013,4 +2223,10 @@ watch([users, projects, expenses, adjustments, memberCostRows, officerCostRows],
   if (skipDirtyTracking) return
   markDirty()
 }, { deep: true })
+
+watch([activeWorkProjectId, s5MonthKeys], () => {
+  window.setTimeout(() => {
+    scrollWorkGridToLatestMonth()
+  }, 0)
+})
 </script>
