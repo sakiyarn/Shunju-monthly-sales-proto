@@ -57,4 +57,52 @@ class MasterControllerTest < ActionDispatch::IntegrationTest
     assert_equal user.id, response_member["user_id"]
     assert_equal 7_200, response_member["default_billing_rate"]
   end
+
+  test "master includes monthly accounting data props" do
+    accounting = MonthlyAccountingDatum.create!(
+      work_month: Date.new(2025, 7, 1),
+      sales: 5_814_500,
+      gross_profit: 1_181_511,
+      selling_general_admin_cost: 436_593,
+      accounting_operating_profit: 744_918
+    )
+
+    get master_path, headers: { "X-Inertia" => "true" }
+
+    assert_response :success
+
+    payload = JSON.parse(response.body)
+    accounting_rows = payload.dig("props", "monthly_accounting_data")
+    assert accounting_rows.present?
+
+    response_row = accounting_rows.find { |item| item["work_month"] == accounting.work_month.strftime("%Y-%m") }
+    assert_not_nil response_row
+    assert_equal 5_814_500, response_row["sales"]
+    assert_equal 1_181_511, response_row["gross_profit"]
+    assert_equal 436_593, response_row["selling_general_admin_cost"]
+    assert_equal 744_918, response_row["accounting_operating_profit"]
+  end
+
+  test "master includes monthly accounting history props" do
+    MonthlyAccountingDatum.create!(
+      work_month: Date.new(2025, 7, 1),
+      sales: 5_814_500,
+      gross_profit: 1_181_511,
+      selling_general_admin_cost: 436_593,
+      accounting_operating_profit: 744_918
+    )
+    history = MonthlyAccountingDataHistory.capture!(event_type: "import")
+
+    get master_path, headers: { "X-Inertia" => "true" }
+
+    assert_response :success
+
+    payload = JSON.parse(response.body)
+    histories = payload.dig("props", "monthly_accounting_histories")
+    assert histories.present?
+
+    response_history = histories.find { |item| item["id"] == history.id }
+    assert_not_nil response_history
+    assert_equal "import", response_history["event_type"]
+  end
 end

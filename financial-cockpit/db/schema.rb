@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_02_18_000100) do
+ActiveRecord::Schema[7.2].define(version: 2026_02_18_000300) do
   create_table "billing_adjustments", force: :cascade do |t|
     t.integer "user_id"
     t.integer "project_id"
@@ -74,7 +74,16 @@ ActiveRecord::Schema[7.2].define(version: 2026_02_18_000100) do
     t.decimal "accounting_operating_profit", precision: 15, scale: 2
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.decimal "gross_profit", precision: 15, scale: 2
     t.index ["work_month"], name: "index_monthly_accounting_data_on_work_month", unique: true
+  end
+
+  create_table "monthly_accounting_data_histories", force: :cascade do |t|
+    t.string "event_type", null: false
+    t.json "snapshot_rows", default: [], null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_monthly_accounting_data_histories_on_created_at"
   end
 
   create_table "monthly_business_days", force: :cascade do |t|
