@@ -1311,7 +1311,7 @@ const accountingColDefs = computed<ColDef[]>(() => [
 
 const createS5ChildColumn = (monthKey: string, kind: S5MetricKind): ColDef => ({
   field: s5ChildField(monthKey, kind),
-  headerName: kind === 'hours' ? '稼働(h)' : '単価(円)',
+  headerName: kind === 'hours' ? '稼働' : '単価',
   minWidth: kind === 'hours' ? 80 : 110,
   width: kind === 'hours' ? 88 : 120,
   maxWidth: kind === 'hours' ? 96 : 130,
@@ -1338,6 +1338,11 @@ const createS5ChildColumn = (monthKey: string, kind: S5MetricKind): ColDef => ({
     }
     params.data[monthKey] = normalized
     return true
+  },
+  valueFormatter: (params: ValueFormatterParams<Record<string, unknown>>) => {
+    const value = Number(params.value ?? 0)
+    if (kind === 'unitPrice') return formatYen(value)
+    return `${value}h`
   },
   cellClass: (params: CellClassParams<Record<string, unknown>>) => {
     if (!params.data || activeWorkProjectId.value === null) return ''
