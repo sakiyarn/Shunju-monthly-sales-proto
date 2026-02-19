@@ -328,6 +328,27 @@
           </select>
         </div>
       </div>
+      <div class="mb-3 flex flex-wrap items-center gap-2">
+        <label class="text-sm text-slate-700">
+          表示軸
+          <select v-model="s5DisplayMode" class="input ml-2">
+            <option value="calendar">暦年（1月〜12月）</option>
+            <option value="fiscal">決算年度（7月〜翌6月）</option>
+          </select>
+        </label>
+        <label v-if="s5DisplayMode === 'calendar'" class="text-sm text-slate-700">
+          年
+          <select v-model.number="s5CalendarYear" class="input ml-2">
+            <option v-for="year in s5CalendarYears" :key="`s5-calendar-${year}`" :value="year">{{ year }}年</option>
+          </select>
+        </label>
+        <label v-else class="text-sm text-slate-700">
+          決算年度
+          <select v-model.number="s5FiscalYear" class="input ml-2">
+            <option v-for="year in s5FiscalYears" :key="`s5-fiscal-${year}`" :value="year">{{ formatFiscalTermLabel(year) }}</option>
+          </select>
+        </label>
+      </div>
       <p v-if="!activeWorkProject" class="mb-3 text-sm text-slate-500">表示対象の案件がありません。</p>
       <p v-else-if="!isActiveWorkProject" class="mb-3 text-sm text-slate-500">終了案件は閲覧専用です。</p>
       <p v-if="errors.s5" class="mb-3 error-msg whitespace-pre-line">{{ errors.s5 }}</p>
@@ -635,6 +656,8 @@ interface S3AssignmentRow {
 }
 
 type S3MemberSortMode = 'section_order' | 'unit_price_desc'
+type S5DisplayMode = 'calendar' | 'fiscal'
+const FISCAL_TERM_START_YEAR = 2022
 
 interface InertiaFlash {
   notice?: string
@@ -928,7 +951,67 @@ const accountingRows = computed<Record<string, string | number | null>[]>(() => 
 const s5Projects = computed(() => [...s3Projects.value])
 const s5ActiveProjects = computed(() => s5Projects.value.filter((project) => project.is_active))
 const s5ClosedProjects = computed(() => s5Projects.value.filter((project) => !project.is_active))
-const s5MonthKeys = computed(() => [...new Set(props.s5_month_keys)].sort())
+const s5DataMonthKeys = computed(() => [...new Set(props.s5_month_keys)].sort())
+const s5DisplayMode = ref<S5DisplayMode>('calendar')
+const now = new Date()
+const currentYear = now.getFullYear()
+const currentMonth = now.getMonth() + 1
+const currentFiscalYear = currentMonth >= 7 ? currentYear : currentYear - 1
+const fallbackYears = [currentYear - 1, currentYear]
+
+const s5CalendarYears = computed(() => {
+  const years = new Set<number>(
+    s5DataMonthKeys.value.map((monthKey) => Number(monthKey.slice(0, 4))).filter((year) => Number.isInteger(year))
+  )
+  fallbackYears.forEach((year) => years.add(year))
+  return [...years].sort((a, b) => a - b)
+})
+
+const s5FiscalYears = computed(() => {
+  const years = new Set<number>(
+    s5DataMonthKeys.value
+      .map((monthKey) => {
+        const year = Number(monthKey.slice(0, 4))
+        const month = Number(monthKey.slice(5, 7))
+        if (!Number.isInteger(year) || !Number.isInteger(month)) return null
+        return month >= 7 ? year : year - 1
+      })
+      .filter((year): year is number => year !== null)
+  )
+  fallbackYears.forEach((year) => years.add(year))
+  return [...years].sort((a, b) => a - b)
+})
+
+const s5CalendarYear = ref<number>(s5CalendarYears.value[s5CalendarYears.value.length - 1] ?? currentYear)
+const s5FiscalYear = ref<number>(s5FiscalYears.value[s5FiscalYears.value.length - 1] ?? currentFiscalYear)
+
+const monthKey = (year: number, month: number) => `${year}-${String(month).padStart(2, '0')}`
+
+const formatFiscalTermLabel = (fiscalYear: number) => {
+  const termNumber = fiscalYear - FISCAL_TERM_START_YEAR + 1
+  if (termNumber <= 0) return `${fiscalYear}年度（${fiscalYear}年7月〜${fiscalYear + 1}年6月）`
+  return `${termNumber}期目（${fiscalYear}年7月-${fiscalYear + 1}年6月）`
+}
+
+const s5MonthKeys = computed(() => {
+  if (s5DisplayMode.value === 'calendar') {
+    return Array.from({ length: 12 }, (_, index) => monthKey(s5CalendarYear.value, index + 1))
+  }
+  return [
+    monthKey(s5FiscalYear.value, 7),
+    monthKey(s5FiscalYear.value, 8),
+    monthKey(s5FiscalYear.value, 9),
+    monthKey(s5FiscalYear.value, 10),
+    monthKey(s5FiscalYear.value, 11),
+    monthKey(s5FiscalYear.value, 12),
+    monthKey(s5FiscalYear.value + 1, 1),
+    monthKey(s5FiscalYear.value + 1, 2),
+    monthKey(s5FiscalYear.value + 1, 3),
+    monthKey(s5FiscalYear.value + 1, 4),
+    monthKey(s5FiscalYear.value + 1, 5),
+    monthKey(s5FiscalYear.value + 1, 6)
+  ]
+})
 const activeWorkProjectId = ref<number | null>(null)
 const workGridApi = ref<GridApi | null>(null)
 const s5State = reactive({
@@ -965,6 +1048,14 @@ const normalizeS5CellValue = (value: unknown): S5CellValue => {
   }
 }
 
+const formatS5CellValue = (value: unknown) => {
+  if (!value || typeof value !== 'object') return ''
+  const candidate = value as Partial<{ hours: unknown; unitPrice: unknown }>
+  if (candidate.hours === null || candidate.hours === undefined || candidate.unitPrice === null || candidate.unitPrice === undefined) return ''
+  const normalized = normalizeS5CellValue(value)
+  return `${normalized.hours}h / ${formatYen(normalized.unitPrice)}`
+}
+
 const rebuildWorkRowsByProject = () => {
   Object.keys(workRowsByProject).forEach((key) => {
     delete workRowsByProject[key]
@@ -996,7 +1087,7 @@ const rebuildWorkRowsByProject = () => {
       }
 
       s5MonthKeys.value.forEach((monthKey) => {
-        row[monthKey] = logsByKey.get(`${project.id}:${assignment.user_id}:${monthKey}`) ?? { hours: 0, unitPrice: 0 }
+        row[monthKey] = logsByKey.get(`${project.id}:${assignment.user_id}:${monthKey}`) ?? null
       })
       return row
     })
@@ -1091,11 +1182,7 @@ const workColDefs = computed<ColDef[]>(() => [
     field: monthKey,
     editable: () => isActiveWorkProject.value,
     cellEditor: PairCellEditor,
-    valueFormatter: (params: ValueFormatterParams) => {
-      const val = normalizeS5CellValue(params.value)
-      if (!val) return ''
-      return `${val.hours}h / ${formatYen(val.unitPrice)}`
-    }
+    valueFormatter: (params: ValueFormatterParams) => formatS5CellValue(params.value)
   }))
 ])
 
@@ -1831,15 +1918,8 @@ function onCsvDrop(event: DragEvent) {
   if (file) void processCsv(file)
 }
 
-function scrollWorkGridToLatestMonth() {
-  const latestMonthKey = s5MonthKeys.value[s5MonthKeys.value.length - 1]
-  if (!latestMonthKey || !workGridApi.value) return
-  workGridApi.value.ensureColumnVisible(latestMonthKey)
-}
-
 function onWorkGridReady(event: GridReadyEvent) {
   workGridApi.value = event.api
-  scrollWorkGridToLatestMonth()
 }
 
 function selectS5ClosedProject(projectId: string) {
@@ -2149,6 +2229,20 @@ watch(
   { immediate: true }
 )
 
+watch(s5CalendarYears, (years) => {
+  if (years.length === 0) return
+  if (!years.includes(s5CalendarYear.value)) {
+    s5CalendarYear.value = years[years.length - 1]
+  }
+}, { immediate: true })
+
+watch(s5FiscalYears, (years) => {
+  if (years.length === 0) return
+  if (!years.includes(s5FiscalYear.value)) {
+    s5FiscalYear.value = years[years.length - 1]
+  }
+}, { immediate: true })
+
 watch(
   () => props.projects,
   (nextProjects) => {
@@ -2194,12 +2288,13 @@ watch(
   [() => props.project_members, () => props.billing_work_logs, () => props.s5_month_keys, () => props.projects, () => props.users],
   () => {
     rebuildWorkRowsByProject()
-    window.setTimeout(() => {
-      scrollWorkGridToLatestMonth()
-    }, 0)
   },
   { deep: true }
 )
+
+watch([s5DisplayMode, s5CalendarYear, s5FiscalYear], () => {
+  rebuildWorkRowsByProject()
+})
 
 watch(
   () => props.monthly_accounting_histories,
@@ -2224,9 +2319,4 @@ watch([users, projects, expenses, adjustments, memberCostRows, officerCostRows],
   markDirty()
 }, { deep: true })
 
-watch([activeWorkProjectId, s5MonthKeys], () => {
-  window.setTimeout(() => {
-    scrollWorkGridToLatestMonth()
-  }, 0)
-})
 </script>
