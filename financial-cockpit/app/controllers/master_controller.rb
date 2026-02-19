@@ -7,6 +7,8 @@ class MasterController < InertiaController
       roles: roles_payload,
       projects: projects_payload,
       project_members: project_members_payload,
+      s5_month_keys: s5_month_keys_payload,
+      billing_work_logs: billing_work_logs_payload,
       monthly_accounting_data: monthly_accounting_data_payload,
       monthly_accounting_histories: monthly_accounting_histories_payload
     }
@@ -64,6 +66,28 @@ class MasterController < InertiaController
         payload = project_member.as_json(only: %i[id project_id user_id default_billing_rate])
         payload["default_billing_rate"] = project_member.default_billing_rate.to_i
         payload
+      end
+  end
+
+  def s5_month_keys_payload
+    BillingWorkLog
+      .distinct
+      .order(:work_month)
+      .pluck(:work_month)
+      .map { |month| month.strftime("%Y-%m") }
+  end
+
+  def billing_work_logs_payload
+    BillingWorkLog
+      .order(:project_id, :user_id, :work_month)
+      .map do |log|
+        {
+          project_id: log.project_id,
+          user_id: log.user_id,
+          work_month: log.work_month.strftime("%Y-%m"),
+          billed_hours: log.billed_hours.to_i,
+          billing_rate: log.billing_rate.to_i
+        }
       end
   end
 
