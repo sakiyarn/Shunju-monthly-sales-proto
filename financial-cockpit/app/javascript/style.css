@@ -328,6 +328,21 @@ body,
   padding: 0.15rem 0.45rem;
 }
 
+.s5-grid .ag-cell.s5-cell-dirty {
+  background: #fef3c7;
+}
+
+.s5-grid .ag-cell.ag-cell-focus {
+  background: #eff6ff;
+  outline: 2px solid #60a5fa;
+  outline-offset: -2px;
+}
+
+.s5-grid .ag-cell.s5-cell-dirty.ag-cell-focus {
+  background: #fde68a;
+  outline-color: #f59e0b;
+}
+
 @media (min-width: 1024px) {
   .master-s3-tabs {
     align-items: start;

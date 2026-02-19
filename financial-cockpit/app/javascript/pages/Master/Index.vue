@@ -381,10 +381,12 @@
       </div>
       <div v-else class="ag-theme-quartz h-[320px] w-full">
         <AgGridVue
-          class="h-full w-full"
+          class="s5-grid h-full w-full"
           :rowData="activeWorkProjectId !== null ? (workRowsByProject[String(activeWorkProjectId)] ?? []) : []"
           :columnDefs="workColDefs"
           :defaultColDef="defaultColDef"
+          :enterNavigatesVertically="true"
+          :enterNavigatesVerticallyAfterEdit="true"
           @grid-ready="onWorkGridReady"
           @cell-value-changed="onWorkCellChanged"
         />
@@ -571,8 +573,16 @@
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { router, usePage } from '@inertiajs/vue3'
 import { AgGridVue } from 'ag-grid-vue3'
-import type { ColDef, ColGroupDef, GridApi, GridReadyEvent, ValueFormatterParams } from 'ag-grid-community'
-import PairCellEditor from '../../components/PairCellEditor.vue'
+import type {
+  CellClassParams,
+  ColDef,
+  ColGroupDef,
+  GridApi,
+  GridReadyEvent,
+  ValueFormatterParams,
+  ValueGetterParams,
+  ValueSetterParams
+} from 'ag-grid-community'
 import 'ag-grid-community/styles/ag-grid.css'
 import 'ag-grid-community/styles/ag-theme-quartz.css'
 
@@ -683,6 +693,7 @@ interface S3AssignmentRow {
 
 type S3MemberSortMode = 'section_order' | 'unit_price_desc'
 type S5DisplayMode = 'calendar' | 'fiscal'
+type S5MetricKind = 'hours' | 'unitPrice'
 type S5UnsavedAction = 'save' | 'discard' | 'cancel'
 const FISCAL_TERM_START_YEAR = 2022
 
@@ -739,6 +750,11 @@ interface S5DisplaySelection {
   mode: S5DisplayMode
   calendarYear: number
   fiscalYear: number
+}
+
+interface ParsedS5ChildField {
+  monthKey: string
+  kind: S5MetricKind
 }
 
 const formatYen = (v: number) => new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY', maximumFractionDigits: 0 }).format(Number(v) || 0)
@@ -1054,6 +1070,7 @@ const s5State = reactive({
   processing: false
 })
 const s5Edited = ref(false)
+const s5DirtyCellKeys = reactive(new Set<string>())
 const workRowsByProject = reactive<Record<string, Record<string, unknown>[]>>({})
 
 const activeWorkProject = computed(() => {
@@ -1085,24 +1102,68 @@ const normalizeS5CellValue = (value: unknown): S5CellValue => {
   }
 }
 
-const formatS5CellValue = (value: unknown) => {
-  if (!value || typeof value !== 'object') return ''
-  const candidate = value as Partial<{ hours: unknown; unitPrice: unknown }>
-  if (candidate.hours === null || candidate.hours === undefined || candidate.unitPrice === null || candidate.unitPrice === undefined) return ''
-  const normalized = normalizeS5CellValue(value)
-  return `${normalized.hours}h / ${formatYen(normalized.unitPrice)}`
+const normalizeS5MetricValue = (value: unknown) => {
+  const parsed = Number.parseInt(String(value ?? 0), 10)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+const s5ChildField = (monthKey: string, kind: S5MetricKind) => `${monthKey}_${kind}`
+
+const parseS5ChildField = (field: string): ParsedS5ChildField | null => {
+  const match = field.match(/^(\d{4}-\d{2})_(hours|unitPrice)$/)
+  if (!match) return null
+  return { monthKey: match[1], kind: match[2] as S5MetricKind }
+}
+
+const buildS5PersistedValueKey = (projectId: number, userId: number, monthKey: string) => `${projectId}:${userId}:${monthKey}`
+const buildS5DirtyCellKey = (projectId: number, userId: number, monthKey: string, kind: S5MetricKind) => `${projectId}:${userId}:${monthKey}:${kind}`
+
+const s5PersistedValuesByKey = computed(() => {
+  return new Map(
+    props.billing_work_logs.map((log) => [
+      buildS5PersistedValueKey(log.project_id, log.user_id, log.work_month),
+      { hours: Number(log.billed_hours) || 0, unitPrice: Number(log.billing_rate) || 0 }
+    ])
+  )
+})
+
+const s5PersistedValueFor = (projectId: number, userId: number, monthKey: string): S5CellValue => {
+  return s5PersistedValuesByKey.value.get(buildS5PersistedValueKey(projectId, userId, monthKey)) ?? { hours: 0, unitPrice: 0 }
+}
+
+const clearS5DirtyCells = () => {
+  s5DirtyCellKeys.clear()
+  s5Edited.value = false
+  workGridApi.value?.refreshCells({ force: true })
+}
+
+const syncS5DirtyCell = (projectId: number, userId: number, monthKey: string, kind: S5MetricKind, current: S5CellValue) => {
+  const persisted = s5PersistedValueFor(projectId, userId, monthKey)
+  const currentMetric = kind === 'hours' ? current.hours : current.unitPrice
+  const persistedMetric = kind === 'hours' ? persisted.hours : persisted.unitPrice
+  const dirtyKey = buildS5DirtyCellKey(projectId, userId, monthKey, kind)
+
+  if (currentMetric === persistedMetric) {
+    s5DirtyCellKeys.delete(dirtyKey)
+  } else {
+    s5DirtyCellKeys.add(dirtyKey)
+  }
+
+  s5Edited.value = s5DirtyCellKeys.size > 0
+}
+
+const isS5DirtyCell = (projectId: number, userId: number, monthKey: string, kind: S5MetricKind) => {
+  return s5DirtyCellKeys.has(buildS5DirtyCellKey(projectId, userId, monthKey, kind))
 }
 
 const rebuildWorkRowsByProject = () => {
+  clearS5DirtyCells()
+
   Object.keys(workRowsByProject).forEach((key) => {
     delete workRowsByProject[key]
   })
 
   const userById = new Map(props.users.map((user) => [user.id, user]))
-  const logsByKey = new Map(props.billing_work_logs.map((log) => [
-    `${log.project_id}:${log.user_id}:${log.work_month}`,
-    { hours: Number(log.billed_hours) || 0, unitPrice: Number(log.billing_rate) || 0 }
-  ]))
 
   s5Projects.value.forEach((project) => {
     const assignments = props.project_members
@@ -1119,12 +1180,13 @@ const rebuildWorkRowsByProject = () => {
     workRowsByProject[String(project.id)] = assignments.map((assignment) => {
       const user = userById.get(assignment.user_id)
       const row: Record<string, unknown> = {
+        projectId: project.id,
         userId: assignment.user_id,
         member: user?.name ?? `不明なメンバー（ID:${assignment.user_id}）`
       }
 
       s5MonthKeys.value.forEach((monthKey) => {
-        row[monthKey] = logsByKey.get(`${project.id}:${assignment.user_id}:${monthKey}`) ?? null
+        row[monthKey] = s5PersistedValueFor(project.id, assignment.user_id, monthKey)
       })
       return row
     })
@@ -1212,14 +1274,47 @@ const accountingColDefs = computed<ColDef[]>(() => [
   }))
 ])
 
-const workColDefs = computed<ColDef[]>(() => [
+const createS5ChildColumn = (monthKey: string, kind: S5MetricKind): ColDef => ({
+  field: s5ChildField(monthKey, kind),
+  headerName: kind === 'hours' ? '稼働(h)' : '単価(円)',
+  minWidth: kind === 'hours' ? 80 : 110,
+  editable: () => isActiveWorkProject.value,
+  valueGetter: (params: ValueGetterParams<Record<string, unknown>>) => {
+    const normalized = normalizeS5CellValue(params.data?.[monthKey])
+    return kind === 'hours' ? normalized.hours : normalized.unitPrice
+  },
+  valueSetter: (params: ValueSetterParams<Record<string, unknown>>) => {
+    if (!params.data) return false
+    const normalized = normalizeS5CellValue(params.data[monthKey])
+    const metricValue = normalizeS5MetricValue(params.newValue)
+    if (kind === 'hours') {
+      normalized.hours = metricValue
+    } else {
+      normalized.unitPrice = metricValue
+    }
+    params.data[monthKey] = normalized
+    return true
+  },
+  valueFormatter: kind === 'unitPrice'
+    ? (params: ValueFormatterParams<Record<string, unknown>>) => Number(params.value ?? 0).toLocaleString('ja-JP')
+    : undefined,
+  cellClass: (params: CellClassParams<Record<string, unknown>>) => {
+    if (!params.data || activeWorkProjectId.value === null) return ''
+    const userId = Number(params.data.userId)
+    if (!Number.isInteger(userId)) return ''
+    return isS5DirtyCell(activeWorkProjectId.value, userId, monthKey, kind) ? 's5-cell-dirty' : ''
+  }
+})
+
+const workColDefs = computed<Array<ColDef | ColGroupDef>>(() => [
   { field: 'member', headerName: 'メンバー', pinned: 'left', editable: false, minWidth: 180 },
   ...s5MonthKeys.value.map((monthKey) => ({
     headerName: formatMonthLabel(monthKey),
-    field: monthKey,
-    editable: () => isActiveWorkProject.value,
-    cellEditor: PairCellEditor,
-    valueFormatter: (params: ValueFormatterParams) => formatS5CellValue(params.value)
+    marryChildren: true,
+    children: [
+      createS5ChildColumn(monthKey, 'hours'),
+      createS5ChildColumn(monthKey, 'unitPrice')
+    ]
   }))
 ])
 
@@ -1967,6 +2062,7 @@ function applyS5ProjectSwitch(projectId: number) {
 }
 
 function applyS5DisplayChange(selection: S5DisplaySelection) {
+  clearS5DirtyCells()
   s5DisplayMode.value = selection.mode
   s5CalendarYear.value = selection.calendarYear
   s5FiscalYear.value = selection.fiscalYear
@@ -1985,7 +2081,7 @@ function promptS5UnsavedAction(): S5UnsavedAction {
 function discardS5DraftAndRun(action: () => void) {
   rebuildWorkRowsByProject()
   dirty.value = false
-  s5Edited.value = false
+  clearS5DirtyCells()
   clearErrors('s5')
   pendingS5ProjectId.value = null
   pendingS5DisplayChange.value = null
@@ -2084,18 +2180,28 @@ function onS5FiscalYearChanged(value: string) {
 }
 
 function onWorkCellChanged(event: { colDef?: { field?: string }; data?: Record<string, unknown> }) {
-  const key = event.colDef?.field
-  if (!key || !s5MonthKeys.value.includes(key)) {
-    markDirty()
-    return
-  }
+  const field = event.colDef?.field
   const row = event.data
-  if (!row) {
+  if (!field || !row) {
     markDirty()
     return
   }
-  row[key] = normalizeS5CellValue(row[key])
-  s5Edited.value = true
+
+  const parsed = parseS5ChildField(field)
+  if (!parsed) {
+    markDirty()
+    return
+  }
+
+  row[parsed.monthKey] = normalizeS5CellValue(row[parsed.monthKey])
+
+  const projectId = Number(row.projectId ?? activeWorkProjectId.value)
+  const userId = Number(row.userId)
+  if (Number.isInteger(projectId) && Number.isInteger(userId)) {
+    const currentValue = normalizeS5CellValue(row[parsed.monthKey])
+    syncS5DirtyCell(projectId, userId, parsed.monthKey, parsed.kind, currentValue)
+  }
+
   markDirty()
 }
 
@@ -2325,7 +2431,7 @@ function submitS5() {
     preserveState: true,
     onSuccess: () => {
       dirty.value = false
-      s5Edited.value = false
+      clearS5DirtyCells()
       clearErrors('s5')
 
       if (pendingS5DisplayChange.value) {
@@ -2458,7 +2564,6 @@ watch(
   [() => props.project_members, () => props.billing_work_logs, () => props.s5_month_keys, () => props.projects, () => props.users],
   () => {
     rebuildWorkRowsByProject()
-    s5Edited.value = false
   },
   { deep: true }
 )
