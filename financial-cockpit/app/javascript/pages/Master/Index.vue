@@ -1,5 +1,13 @@
 <template>
   <main class="mx-auto max-w-[1400px] space-y-6 px-6 py-8">
+    <div
+      class="fixed right-4 top-20 z-40 rounded-full border px-3 py-1 text-xs font-semibold shadow-sm transition-all duration-200"
+      :class="hasUnsavedChanges ? 'border-amber-300 bg-amber-100 text-amber-900' : 'border-emerald-300 bg-emerald-100 text-emerald-900'"
+      aria-live="polite"
+    >
+      {{ hasUnsavedChanges ? '未保存の変更あり' : '保存済み' }}
+    </div>
+
     <section class="card">
       <h2 class="card-title">👥 セクション1: メンバー管理</h2>
       <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -315,11 +323,27 @@
       </p>
     </section>
 
-    <section class="card">
-      <h2 class="card-title">📊 セクション5: 請求稼働実績（案件×メンバー×月）</h2>
+    <section class="card transition-colors duration-200" :class="s5Edited ? 'border-amber-300 bg-amber-50/60' : ''">
+      <div class="mb-2 flex items-center gap-2">
+        <h2 class="card-title mb-0">📊 セクション5: 請求稼働実績（案件×メンバー×月）</h2>
+        <span
+          class="rounded-full border px-2 py-0.5 text-xs font-semibold"
+          :class="s5Edited ? 'border-amber-300 bg-amber-100 text-amber-900' : 'border-slate-200 bg-slate-100 text-slate-600'"
+        >
+          {{ s5Edited ? '未保存' : '保存済み' }}
+        </span>
+      </div>
       <div class="mb-3 flex flex-wrap items-center gap-2">
         <div class="flex flex-wrap gap-2">
-          <button v-for="p in s5ActiveProjects" :key="`work-active-${p.id}`" class="tab" :class="activeWorkProjectId === p.id ? 'tab-active' : ''" @click="activeWorkProjectId = p.id">{{ p.name }}</button>
+          <button
+            v-for="p in s5ActiveProjects"
+            :key="`work-active-${p.id}`"
+            class="tab"
+            :class="activeWorkProjectId === p.id ? 'tab-active' : ''"
+            @click="attemptSwitchS5Project(p.id)"
+          >
+            {{ p.name }}
+          </button>
         </div>
         <div v-if="s5ClosedProjects.length > 0" class="ml-auto min-w-56">
           <select class="input w-full" :value="selectedS5ClosedProjectValue" @change="selectS5ClosedProject(($event.target as HTMLSelectElement).value)">
@@ -331,20 +355,20 @@
       <div class="mb-3 flex flex-wrap items-center gap-2">
         <label class="text-sm text-slate-700">
           表示軸
-          <select v-model="s5DisplayMode" class="input ml-2">
+          <select class="input ml-2" :value="s5DisplayMode" @change="onS5DisplayModeChanged(($event.target as HTMLSelectElement).value)">
             <option value="calendar">暦年（1月〜12月）</option>
             <option value="fiscal">決算年度（7月〜翌6月）</option>
           </select>
         </label>
         <label v-if="s5DisplayMode === 'calendar'" class="text-sm text-slate-700">
           年
-          <select v-model.number="s5CalendarYear" class="input ml-2">
+          <select class="input ml-2" :value="s5CalendarYear" @change="onS5CalendarYearChanged(($event.target as HTMLSelectElement).value)">
             <option v-for="year in s5CalendarYears" :key="`s5-calendar-${year}`" :value="year">{{ year }}年</option>
           </select>
         </label>
         <label v-else class="text-sm text-slate-700">
           決算年度
-          <select v-model.number="s5FiscalYear" class="input ml-2">
+          <select class="input ml-2" :value="s5FiscalYear" @change="onS5FiscalYearChanged(($event.target as HTMLSelectElement).value)">
             <option v-for="year in s5FiscalYears" :key="`s5-fiscal-${year}`" :value="year">{{ formatFiscalTermLabel(year) }}</option>
           </select>
         </label>
@@ -365,7 +389,9 @@
           @cell-value-changed="onWorkCellChanged"
         />
       </div>
-      <button class="btn-save" :disabled="s5State.processing || !isActiveWorkProject || s5MonthKeys.length === 0" @click="saveSection('s5')">保存</button>
+      <button class="btn-save" :disabled="s5State.processing || !isActiveWorkProject || s5MonthKeys.length === 0" @click="saveSection('s5')">
+        {{ s5Edited ? '保存（未保存あり）' : '保存' }}
+      </button>
     </section>
 
     <section class="card">
@@ -657,6 +683,7 @@ interface S3AssignmentRow {
 
 type S3MemberSortMode = 'section_order' | 'unit_price_desc'
 type S5DisplayMode = 'calendar' | 'fiscal'
+type S5UnsavedAction = 'save' | 'discard' | 'cancel'
 const FISCAL_TERM_START_YEAR = 2022
 
 interface InertiaFlash {
@@ -706,6 +733,12 @@ interface PersistedBillingAdjustment {
   toMonth: string
   amount: number
   memo: string
+}
+
+interface S5DisplaySelection {
+  mode: S5DisplayMode
+  calendarYear: number
+  fiscalYear: number
 }
 
 const formatYen = (v: number) => new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY', maximumFractionDigits: 0 }).format(Number(v) || 0)
@@ -1013,10 +1046,14 @@ const s5MonthKeys = computed(() => {
   ]
 })
 const activeWorkProjectId = ref<number | null>(null)
+const pendingS5ProjectId = ref<number | null>(null)
+const pendingS5DisplayChange = ref<S5DisplaySelection | null>(null)
+const isSwitchingS5Project = ref(false)
 const workGridApi = ref<GridApi | null>(null)
 const s5State = reactive({
   processing: false
 })
+const s5Edited = ref(false)
 const workRowsByProject = reactive<Record<string, Record<string, unknown>[]>>({})
 
 const activeWorkProject = computed(() => {
@@ -1254,6 +1291,7 @@ const toast = reactive({ show: false, type: 'success' as 'success' | 'error', me
 
 const errors = reactive<Record<string, string>>({})
 const dirty = ref(false)
+const hasUnsavedChanges = computed(() => dirty.value || s5Edited.value)
 let skipDirtyTracking = true
 let suppressBeforeVisitGuard = false
 
@@ -1922,9 +1960,127 @@ function onWorkGridReady(event: GridReadyEvent) {
   workGridApi.value = event.api
 }
 
+function applyS5ProjectSwitch(projectId: number) {
+  isSwitchingS5Project.value = true
+  activeWorkProjectId.value = projectId
+  isSwitchingS5Project.value = false
+}
+
+function applyS5DisplayChange(selection: S5DisplaySelection) {
+  s5DisplayMode.value = selection.mode
+  s5CalendarYear.value = selection.calendarYear
+  s5FiscalYear.value = selection.fiscalYear
+}
+
+function promptS5UnsavedAction(): S5UnsavedAction {
+  const answer = window.prompt(
+    'S5に未保存の変更があります。\n1: 保存して切替\n2: 破棄して切替\n3: キャンセル',
+    '3'
+  )
+  if (answer === '1') return 'save'
+  if (answer === '2') return 'discard'
+  return 'cancel'
+}
+
+function discardS5DraftAndRun(action: () => void) {
+  rebuildWorkRowsByProject()
+  dirty.value = false
+  s5Edited.value = false
+  clearErrors('s5')
+  pendingS5ProjectId.value = null
+  pendingS5DisplayChange.value = null
+  action()
+}
+
+function confirmS5UnsavedAndRun(action: () => void, onSave: () => void) {
+  if (!dirty.value && !s5Edited.value) {
+    action()
+    return
+  }
+  if (s5State.processing) return
+
+  const decision = promptS5UnsavedAction()
+  if (decision === 'save') {
+    onSave()
+    return
+  }
+  if (decision === 'discard') {
+    discardS5DraftAndRun(action)
+  }
+}
+
+function attemptSwitchS5Project(projectId: number) {
+  if (isSwitchingS5Project.value) return
+  if (activeWorkProjectId.value === projectId) return
+
+  confirmS5UnsavedAndRun(
+    () => {
+      pendingS5ProjectId.value = null
+      applyS5ProjectSwitch(projectId)
+    },
+    () => {
+      pendingS5ProjectId.value = projectId
+      pendingS5DisplayChange.value = null
+      saveSection('s5')
+    }
+  )
+}
+
+function attemptChangeS5Display(selection: S5DisplaySelection) {
+  if (
+    selection.mode === s5DisplayMode.value &&
+    selection.calendarYear === s5CalendarYear.value &&
+    selection.fiscalYear === s5FiscalYear.value
+  ) {
+    return
+  }
+
+  confirmS5UnsavedAndRun(
+    () => {
+      pendingS5ProjectId.value = null
+      pendingS5DisplayChange.value = null
+      applyS5DisplayChange(selection)
+    },
+    () => {
+      pendingS5DisplayChange.value = selection
+      pendingS5ProjectId.value = null
+      saveSection('s5')
+    }
+  )
+}
+
 function selectS5ClosedProject(projectId: string) {
   if (!projectId) return
-  activeWorkProjectId.value = Number(projectId)
+  attemptSwitchS5Project(Number(projectId))
+}
+
+function onS5DisplayModeChanged(value: string) {
+  const mode: S5DisplayMode = value === 'fiscal' ? 'fiscal' : 'calendar'
+  attemptChangeS5Display({
+    mode,
+    calendarYear: s5CalendarYear.value,
+    fiscalYear: s5FiscalYear.value
+  })
+}
+
+function onS5CalendarYearChanged(value: string) {
+  const year = Number(value)
+  if (!Number.isInteger(year)) return
+  attemptChangeS5Display({
+    mode: 'calendar',
+    calendarYear: year,
+    fiscalYear: s5FiscalYear.value
+  })
+}
+
+function onS5FiscalYearChanged(value: string) {
+  const year = Number(value)
+  if (!Number.isInteger(year)) return
+  attemptChangeS5Display({
+    mode: 'fiscal',
+    calendarYear: s5CalendarYear.value,
+    fiscalYear: year
+  })
 }
 
 function onWorkCellChanged(event: { colDef?: { field?: string }; data?: Record<string, unknown> }) {
@@ -1939,6 +2095,7 @@ function onWorkCellChanged(event: { colDef?: { field?: string }; data?: Record<s
     return
   }
   row[key] = normalizeS5CellValue(row[key])
+  s5Edited.value = true
   markDirty()
 }
 
@@ -2168,7 +2325,20 @@ function submitS5() {
     preserveState: true,
     onSuccess: () => {
       dirty.value = false
+      s5Edited.value = false
       clearErrors('s5')
+
+      if (pendingS5DisplayChange.value) {
+        const nextDisplay = pendingS5DisplayChange.value
+        pendingS5DisplayChange.value = null
+        applyS5DisplayChange(nextDisplay)
+      }
+
+      if (pendingS5ProjectId.value !== null) {
+        const nextProjectId = pendingS5ProjectId.value
+        pendingS5ProjectId.value = null
+        applyS5ProjectSwitch(nextProjectId)
+      }
     },
     onError: (serverErrors) => {
       errors.s5 = firstInertiaError(serverErrors, 'entries') ||
@@ -2187,7 +2357,7 @@ function submitS5() {
 }
 
 const beforeUnload = (event: BeforeUnloadEvent) => {
-  if (!dirty.value) return
+  if (!hasUnsavedChanges.value) return
   event.preventDefault()
   event.returnValue = ''
 }
@@ -2201,7 +2371,7 @@ onMounted(() => {
   stopBeforeVisitListener = router.on('before', (event) => {
     if (suppressBeforeVisitGuard) return
     if (event.detail.visit.method !== 'get') return
-    if (!dirty.value) return
+    if (!hasUnsavedChanges.value) return
     if (!window.confirm('保存していない変更があります。移動しますか？')) {
       event.preventDefault()
     }
@@ -2288,6 +2458,7 @@ watch(
   [() => props.project_members, () => props.billing_work_logs, () => props.s5_month_keys, () => props.projects, () => props.users],
   () => {
     rebuildWorkRowsByProject()
+    s5Edited.value = false
   },
   { deep: true }
 )
