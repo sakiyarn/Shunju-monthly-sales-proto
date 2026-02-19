@@ -26,6 +26,7 @@
 
 ## 5. スコープ運用（クロスチャット共通）
 - マスタデータ画面を触る場合は、作業開始前に必ず `docs/master-migration-scope.md` を読む。
+- S5で「S3/S5統合UI」を検証する場合は、`docs/master-s5-unified-ui-trial.md` も着手前に読む。
 - タスク開始時に「今回の対象セクション番号（例: S3）」を明示してから着手する。
 - スコープ外の変更は実装せず、必要があれば影響調査メモとして残す。
 - 新しいチャットを開始する場合は `docs/templates/master-section-kickoff.md` をコピーして前提を共有する。

@@ -3,6 +3,10 @@
 ## 対象セクション
 - Sx: （例: S3 案件メンバーアサイン）
 
+## 参照ドキュメント
+- docs/master-migration-scope.md
+- （S5統合UI検証時）docs/master-s5-unified-ui-trial.md
+
 ## In Scope
 - （今回の実装対象1）
 - （今回の実装対象2）
