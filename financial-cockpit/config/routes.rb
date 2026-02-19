@@ -18,6 +18,10 @@ Rails.application.routes.draw do
     end
   end
   resources :project_members, only: %i[create update destroy]
+  resource :monthly_accounting_data_import, only: :create
+  resources :monthly_accounting_data_histories, only: [] do
+    post :restore, on: :member
+  end
 
   # Redirect to localhost from 127.0.0.1 to use same IP address with Vite server
   constraints(host: "127.0.0.1") do

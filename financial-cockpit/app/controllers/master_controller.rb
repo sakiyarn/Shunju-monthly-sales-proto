@@ -6,7 +6,9 @@ class MasterController < InertiaController
       users: users_payload,
       roles: roles_payload,
       projects: projects_payload,
-      project_members: project_members_payload
+      project_members: project_members_payload,
+      monthly_accounting_data: monthly_accounting_data_payload,
+      monthly_accounting_histories: monthly_accounting_histories_payload
     }
   end
 
@@ -63,5 +65,39 @@ class MasterController < InertiaController
         payload["default_billing_rate"] = project_member.default_billing_rate.to_i
         payload
       end
+  end
+
+  def monthly_accounting_data_payload
+    MonthlyAccountingDatum
+      .order(:work_month)
+      .map do |row|
+        {
+          work_month: row.work_month.strftime("%Y-%m"),
+          sales: decimal_to_number(row.sales),
+          gross_profit: decimal_to_number(row.gross_profit),
+          selling_general_admin_cost: decimal_to_number(row.selling_general_admin_cost),
+          accounting_operating_profit: decimal_to_number(row.accounting_operating_profit)
+        }
+      end
+  end
+
+  def monthly_accounting_histories_payload
+    MonthlyAccountingDataHistory
+      .recent_first
+      .limit(MonthlyAccountingDataHistory::MAX_ENTRIES)
+      .map do |history|
+        {
+          id: history.id,
+          event_type: history.event_type,
+          created_at: history.created_at.iso8601
+        }
+      end
+  end
+
+  def decimal_to_number(value)
+    return nil if value.nil?
+    return value.to_i if value.frac.zero?
+
+    value.to_f
   end
 end

@@ -146,12 +146,12 @@ ActiveRecord::Base.transaction do
   end
 
   accounting_seed = {
-    "2025-08" => { sales: 3_600_000, personnel_cost: 1_850_000, selling_general_admin_cost: 180_000, accounting_operating_profit: 1_570_000 },
-    "2025-09" => { sales: 3_800_000, personnel_cost: 1_920_000, selling_general_admin_cost: 220_000, accounting_operating_profit: 1_660_000 },
-    "2025-10" => { sales: 3_900_000, personnel_cost: 1_990_000, selling_general_admin_cost: 210_000, accounting_operating_profit: 1_700_000 },
-    "2025-11" => { sales: 4_100_000, personnel_cost: 2_060_000, selling_general_admin_cost: 240_000, accounting_operating_profit: 1_790_000 },
-    "2025-12" => { sales: 4_200_000, personnel_cost: 2_120_000, selling_general_admin_cost: 260_000, accounting_operating_profit: 1_820_000 },
-    "2026-01" => { sales: 3_950_000, personnel_cost: 2_010_000, selling_general_admin_cost: 200_000, accounting_operating_profit: 1_740_000 }
+    "2025-08" => { sales: 3_600_000, personnel_cost: 1_850_000, gross_profit: 1_750_000, selling_general_admin_cost: 180_000, accounting_operating_profit: 1_570_000 },
+    "2025-09" => { sales: 3_800_000, personnel_cost: 1_920_000, gross_profit: 1_880_000, selling_general_admin_cost: 220_000, accounting_operating_profit: 1_660_000 },
+    "2025-10" => { sales: 3_900_000, personnel_cost: 1_990_000, gross_profit: 1_910_000, selling_general_admin_cost: 210_000, accounting_operating_profit: 1_700_000 },
+    "2025-11" => { sales: 4_100_000, personnel_cost: 2_060_000, gross_profit: 2_030_000, selling_general_admin_cost: 240_000, accounting_operating_profit: 1_790_000 },
+    "2025-12" => { sales: 4_200_000, personnel_cost: 2_120_000, gross_profit: 2_080_000, selling_general_admin_cost: 260_000, accounting_operating_profit: 1_820_000 },
+    "2026-01" => { sales: 3_950_000, personnel_cost: 2_010_000, gross_profit: 1_940_000, selling_general_admin_cost: 200_000, accounting_operating_profit: 1_740_000 }
   }
 
   business_days_seed = {
@@ -171,6 +171,7 @@ ActiveRecord::Base.transaction do
       work_month:,
       sales: accounting&.fetch(:sales, nil),
       personnel_cost: accounting&.fetch(:personnel_cost, nil),
+      gross_profit: accounting&.fetch(:gross_profit, nil),
       selling_general_admin_cost: accounting&.fetch(:selling_general_admin_cost, nil),
       accounting_operating_profit: accounting&.fetch(:accounting_operating_profit, nil)
     )

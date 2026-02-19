@@ -273,15 +273,46 @@
 
     <section class="card">
       <h2 class="card-title">📥 セクション4: 会計データ（freee CSV インポート）</h2>
-      <div class="mb-3 flex flex-wrap gap-2">
+      <div class="mb-3 flex flex-wrap items-center gap-2">
         <input ref="csvInput" type="file" accept=".csv" class="hidden" @change="onCsvPicked" />
-        <button class="btn-accent" @click="csvInput?.click()">CSV ファイルを選択</button>
+        <button class="btn-accent" :disabled="s4State.processing || s4State.restoring" @click="csvInput?.click()">
+          {{ s4State.processing ? '取込中...' : 'CSV ファイルを選択' }}
+        </button>
+        <p class="text-xs text-slate-500">手入力はできません。CSVのみ取り込み可能です。</p>
       </div>
-      <div class="mb-4 rounded border border-dashed border-accent/50 p-6 text-center text-sm text-slate-600" @dragover.prevent @drop.prevent="onCsvDrop">ここに CSV をドラッグ&ドロップ</div>
+      <div class="mb-3 flex flex-wrap items-center gap-2">
+        <select
+          v-model.number="s4State.selectedHistoryId"
+          class="input min-w-[280px]"
+          :disabled="s4State.processing || s4State.restoring || s4HistoryOptions.length === 0"
+        >
+          <option :value="null">復元履歴を選択</option>
+          <option v-for="history in s4HistoryOptions" :key="history.id" :value="history.id">{{ history.label }}</option>
+        </select>
+        <button
+          class="btn-sub"
+          :disabled="s4State.processing || s4State.restoring || s4State.selectedHistoryId === null"
+          @click="restoreS4History"
+        >
+          {{ s4State.restoring ? '復元中...' : 'この履歴に戻す' }}
+        </button>
+        <p class="text-xs text-slate-500">インポート直前の状態を最大3件保持します。</p>
+      </div>
+      <div
+        class="mb-4 rounded border border-dashed border-accent/50 p-6 text-center text-sm text-slate-600"
+        @dragover.prevent
+        @drop.prevent="onCsvDrop"
+      >
+        ここに CSV をドラッグ&ドロップ
+      </div>
+      <p v-if="errors.s4" class="mb-3 error-msg">{{ errors.s4 }}</p>
+      <p v-else class="mb-3 text-xs text-slate-500">表示内容は最新のCSV取り込み結果です。</p>
       <div class="ag-theme-quartz h-[260px] w-full">
-        <AgGridVue class="h-full w-full" :rowData="accountingRows" :columnDefs="accountingColDefs" :defaultColDef="defaultColDef" @cell-value-changed="markDirty" />
+        <AgGridVue class="h-full w-full" :rowData="accountingRows" :columnDefs="accountingColDefs" :defaultColDef="s4DefaultColDef" />
       </div>
-      <button class="btn-save" @click="saveSection('s4')">保存</button>
+      <p class="mt-2 text-xs text-slate-500">
+        表示月: {{ s4MonthLabels.length > 0 ? s4MonthLabels.join(' / ') : 'データなし' }}
+      </p>
     </section>
 
     <section class="card">
@@ -512,6 +543,58 @@ interface ProjectMemberRecord {
   default_billing_rate: number | string
 }
 
+interface MonthlyAccountingDataRecord {
+  work_month: string
+  sales: number | null
+  gross_profit: number | null
+  selling_general_admin_cost: number | null
+  accounting_operating_profit: number | null
+}
+
+interface MonthlyAccountingHistoryRecord {
+  id: number
+  event_type: string
+  created_at: string
+}
+
+type S4MetricKey = 'sales' | 'gross_profit' | 'selling_general_admin_cost' | 'accounting_operating_profit'
+
+interface S4DiffMetric {
+  key: S4MetricKey
+  label: string
+  existing: number | null
+  incoming: number | null
+}
+
+interface S4DiffRecord {
+  work_month: string
+  metrics: S4DiffMetric[]
+}
+
+interface S4ImportSummary {
+  target_months: number
+  imported_months?: number
+  created_months?: number
+  updated_months?: number
+  unchanged_months: number
+  skipped_future_months: number
+  new_months?: number
+  changed_months?: number
+}
+
+interface S4ImportResponse {
+  status: 'imported' | 'confirmation_required' | 'error'
+  message?: string
+  summary?: S4ImportSummary
+  diffs?: S4DiffRecord[]
+  errors?: string[]
+}
+
+interface S4RestoreResponse {
+  status: 'restored' | 'error'
+  message?: string
+}
+
 interface S3AssignmentRow {
   id: number
   projectId: number
@@ -540,6 +623,8 @@ const props = defineProps<{
   roles: RoleOption[]
   projects: ProjectRecord[]
   project_members: ProjectMemberRecord[]
+  monthly_accounting_data: MonthlyAccountingDataRecord[]
+  monthly_accounting_histories: MonthlyAccountingHistoryRecord[]
   initialData?: Record<string, unknown>
 }>()
 
@@ -754,12 +839,59 @@ function selectClosedProject(projectId: string) {
   activeAssignProjectId.value = Number(projectId)
 }
 
-const accountingRows = reactive([
-  { item: '売上高', '2025-08': 3600000, '2025-09': 3800000, '2025-10': 3900000, '2025-11': 4100000, '2025-12': 4200000, '2026-01': 3950000, '2026-02': 4050000 },
-  { item: '人件費', '2025-08': 1850000, '2025-09': 1920000, '2025-10': 1990000, '2025-11': 2060000, '2025-12': 2120000, '2026-01': 2010000, '2026-02': 2050000 },
-  { item: '販促費（経費の総額）', '2025-08': 180000, '2025-09': 220000, '2025-10': 210000, '2025-11': 240000, '2025-12': 260000, '2026-01': 200000, '2026-02': 195000 },
-  { item: '会計上の営業利益', '2025-08': 1570000, '2025-09': 1660000, '2025-10': 1700000, '2025-11': 1790000, '2025-12': 1820000, '2026-01': 1740000, '2026-02': 1805000 }
-])
+const s4MetricRows: Array<{ key: S4MetricKey; item: string }> = [
+  { key: 'sales', item: '売上高 計' },
+  { key: 'gross_profit', item: '売上総損益金額' },
+  { key: 'selling_general_admin_cost', item: '販売管理費 計' },
+  { key: 'accounting_operating_profit', item: '営業損益金額' }
+]
+
+const s4Months = computed(() => {
+  const monthKeys = new Set(props.monthly_accounting_data.map((row) => row.work_month))
+  return [...monthKeys].sort()
+})
+
+const formatMonthLabel = (monthKey: string) => {
+  const [year, month] = monthKey.split('-')
+  const monthNumber = Number(month)
+  if (!year || Number.isNaN(monthNumber)) return monthKey
+  return `${year}年${monthNumber}月`
+}
+
+const s4MonthLabels = computed(() => s4Months.value.map((monthKey) => formatMonthLabel(monthKey)))
+
+const formatHistoryDateTime = (text: string) => {
+  const date = new Date(text)
+  if (Number.isNaN(date.getTime())) return text
+  return new Intl.DateTimeFormat('ja-JP', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(date)
+}
+
+const s4HistoryOptions = computed(() => {
+  return props.monthly_accounting_histories.map((history, index) => ({
+    id: history.id,
+    label: `${index + 1}個前 (${formatHistoryDateTime(history.created_at)})`
+  }))
+})
+
+const s4DataByMonth = computed(() => {
+  return new Map(props.monthly_accounting_data.map((row) => [row.work_month, row]))
+})
+
+const accountingRows = computed<Record<string, string | number | null>[]>(() => {
+  return s4MetricRows.map((metric) => {
+    const row: Record<string, string | number | null> = { item: metric.item }
+    s4Months.value.forEach((monthKey) => {
+      row[monthKey] = s4DataByMonth.value.get(monthKey)?.[metric.key] ?? null
+    })
+    return row
+  })
+})
 
 const activeWorkProjectId = ref('p001')
 const workRowsByProject = reactive<Record<string, Record<string, unknown>[]>>({})
@@ -831,6 +963,7 @@ const adjustments = reactive<Adjustment[]>([
 ])
 
 const defaultColDef: ColDef = { editable: true, resizable: true }
+const s4DefaultColDef: ColDef = { editable: false, resizable: true }
 const makeMonthCols = (formatter?: (v: number) => string): ColDef[] => visibleMonths.value.map((m) => ({
   headerName: m.label,
   field: m.key,
@@ -842,7 +975,15 @@ const makeMonthCols = (formatter?: (v: number) => string): ColDef[] => visibleMo
 
 const accountingColDefs = computed<ColDef[]>(() => [
   { field: 'item', headerName: '項目', pinned: 'left', editable: false, minWidth: 200 },
-  ...makeMonthCols((v) => formatYen(v))
+  ...s4Months.value.map((monthKey) => ({
+    headerName: formatMonthLabel(monthKey),
+    field: monthKey,
+    editable: false,
+    valueFormatter: (params: ValueFormatterParams) => {
+      if (params.value === null || params.value === undefined || params.value === '') return '—'
+      return formatYen(Number(params.value))
+    }
+  }))
 ])
 
 const workColDefs = computed<ColDef[]>(() => [
@@ -918,6 +1059,12 @@ const memberCostMatrixColDefs = computed(() => createCostMatrixColDefs('給与',
 const officerCostMatrixColDefs = computed(() => createCostMatrixColDefs('役員報酬', '役員賞与'))
 
 const csvInput = ref<HTMLInputElement | null>(null)
+const s4State = reactive({
+  processing: false,
+  restoring: false,
+  pendingFile: null as File | null,
+  selectedHistoryId: null as number | null
+})
 const toast = reactive({ show: false, type: 'success' as 'success' | 'error', message: '' })
 
 const errors = reactive<Record<string, string>>({})
@@ -1417,25 +1564,173 @@ function showToast(type: 'success' | 'error', message: string) {
   window.setTimeout(() => { toast.show = false }, 2500)
 }
 
-function processCsv(fileName: string) {
-  if (!fileName.endsWith('.csv')) {
-    showToast('error', 'CSV形式のファイルを指定してください')
+const csrfToken = () => {
+  const token = document.querySelector('meta[name="csrf-token"]')
+  return token instanceof HTMLMetaElement ? token.content : ''
+}
+
+const formatS4DiffMonths = (diffs: S4DiffRecord[] | undefined) => {
+  if (!diffs || diffs.length === 0) return ''
+  return diffs.map((item) => item.work_month).join(', ')
+}
+
+const reloadS4Data = (successMessage: string) => {
+  return new Promise<void>((resolve) => {
+    router.visit(window.location.pathname, {
+      method: 'get',
+      replace: true,
+      preserveScroll: true,
+      preserveState: true,
+      onSuccess: () => {
+        showToast('success', successMessage)
+        resolve()
+      },
+      onError: () => {
+        errors.s4 = '会計データの再読込に失敗しました。画面を再読み込みしてください。'
+        showToast('error', errors.s4)
+        resolve()
+      }
+    })
+  })
+}
+
+async function requestS4CsvImport(file: File, confirmOverwriteChanged: boolean): Promise<S4ImportResponse> {
+  const formData = new FormData()
+  formData.append('file', file)
+  if (confirmOverwriteChanged) {
+    formData.append('confirm_overwrite_changed', 'true')
+  }
+
+  const response = await fetch('/monthly_accounting_data_import', {
+    method: 'POST',
+    headers: {
+      'X-CSRF-Token': csrfToken()
+    },
+    body: formData,
+    credentials: 'same-origin'
+  })
+
+  let body: S4ImportResponse
+  try {
+    body = await response.json() as S4ImportResponse
+  } catch {
+    throw new Error('CSV取り込みAPIの応答を解析できませんでした')
+  }
+
+  if (!response.ok || body.status === 'error') {
+    const message = body.message || body.errors?.[0] || 'CSVを取り込めませんでした'
+    throw new Error(message)
+  }
+
+  return body
+}
+
+async function requestS4Restore(historyId: number): Promise<S4RestoreResponse> {
+  const response = await fetch(`/monthly_accounting_data_histories/${historyId}/restore`, {
+    method: 'POST',
+    headers: {
+      'X-CSRF-Token': csrfToken()
+    },
+    credentials: 'same-origin'
+  })
+
+  let body: S4RestoreResponse
+  try {
+    body = await response.json() as S4RestoreResponse
+  } catch {
+    throw new Error('復元APIの応答を解析できませんでした')
+  }
+
+  if (!response.ok || body.status === 'error') {
+    throw new Error(body.message || '会計データを復元できませんでした')
+  }
+
+  return body
+}
+
+async function processCsv(file: File) {
+  clearErrors('s4')
+
+  if (s4State.processing || s4State.restoring) return
+  if (!file.name.toLowerCase().endsWith('.csv')) {
+    errors.s4 = 'CSV形式のファイルを指定してください'
+    showToast('error', errors.s4)
     return
   }
-  if (window.confirm('同月のデータが既に存在します。既存データを上書きしますか？')) {
-    showToast('success', '8月〜2月のデータを取り込みました')
-    markDirty()
+
+  s4State.pendingFile = file
+  s4State.processing = true
+
+  try {
+    const firstResult = await requestS4CsvImport(file, false)
+
+    if (firstResult.status === 'confirmation_required') {
+      const diffMonths = formatS4DiffMonths(firstResult.diffs)
+      const shouldOverwrite = window.confirm(
+        `${firstResult.message ?? '同月データに差分があります。'}\n差分月: ${diffMonths || '不明'}`
+      )
+
+      if (!shouldOverwrite) {
+        showToast('success', 'CSV取り込みを中止しました')
+        return
+      }
+
+      if (!s4State.pendingFile) {
+        errors.s4 = '確認後の再送に失敗しました。CSVを選択し直してください。'
+        showToast('error', errors.s4)
+        return
+      }
+
+      const confirmedResult = await requestS4CsvImport(s4State.pendingFile, true)
+      await reloadS4Data(confirmedResult.message ?? '会計データを更新しました')
+      return
+    }
+
+    await reloadS4Data(firstResult.message ?? '会計データを取り込みました')
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'CSVを取り込めませんでした'
+    errors.s4 = message
+    showToast('error', message)
+  } finally {
+    s4State.processing = false
+    s4State.pendingFile = null
+    if (csvInput.value) csvInput.value.value = ''
+  }
+}
+
+async function restoreS4History() {
+  clearErrors('s4')
+
+  if (s4State.processing || s4State.restoring) return
+  if (s4State.selectedHistoryId === null) {
+    errors.s4 = '復元履歴を選択してください'
+    return
+  }
+
+  if (!window.confirm('選択した履歴の状態に戻します。よろしいですか？')) return
+
+  s4State.restoring = true
+
+  try {
+    const result = await requestS4Restore(s4State.selectedHistoryId)
+    await reloadS4Data(result.message || '会計データを復元しました')
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '会計データを復元できませんでした'
+    errors.s4 = message
+    showToast('error', message)
+  } finally {
+    s4State.restoring = false
   }
 }
 
 function onCsvPicked(event: Event) {
   const file = (event.target as HTMLInputElement).files?.[0]
-  if (file) processCsv(file.name)
+  if (file) void processCsv(file)
 }
 
 function onCsvDrop(event: DragEvent) {
   const file = event.dataTransfer?.files?.[0]
-  if (file) processCsv(file.name)
+  if (file) void processCsv(file)
 }
 
 function onWorkCellChanged(event: { colDef?: { field?: string }; data?: Record<string, unknown> }) {
@@ -1696,7 +1991,25 @@ watch(
   { deep: true }
 )
 
-watch([users, projects, expenses, adjustments, accountingRows, memberCostRows, officerCostRows], () => {
+watch(
+  () => props.monthly_accounting_histories,
+  (histories) => {
+    if (histories.length === 0) {
+      s4State.selectedHistoryId = null
+      return
+    }
+
+    if (
+      s4State.selectedHistoryId === null ||
+      !histories.some((history) => history.id === s4State.selectedHistoryId)
+    ) {
+      s4State.selectedHistoryId = histories[0]?.id ?? null
+    }
+  },
+  { immediate: true, deep: true }
+)
+
+watch([users, projects, expenses, adjustments, memberCostRows, officerCostRows], () => {
   if (skipDirtyTracking) return
   markDirty()
 }, { deep: true })
