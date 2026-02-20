@@ -163,4 +163,78 @@ class MasterControllerTest < ActionDispatch::IntegrationTest
     assert_equal 123, response_row["billed_hours"]
     assert_equal 8_000, response_row["billing_rate"]
   end
+
+  test "master includes s7 staff monthly results props for active members only" do
+    active_member = User.create!(
+      name: "S7有効メンバー",
+      email: "master-s7-active-member@example.com",
+      password: "password123",
+      password_confirmation: "password123",
+      system_role: "member",
+      is_active: true
+    )
+    inactive_member = User.create!(
+      name: "S7無効メンバー",
+      email: "master-s7-inactive-member@example.com",
+      password: "password123",
+      password_confirmation: "password123",
+      system_role: "member",
+      is_active: false
+    )
+    active_admin = User.create!(
+      name: "S7管理者",
+      email: "master-s7-active-admin@example.com",
+      password: "password123",
+      password_confirmation: "password123",
+      system_role: "admin",
+      is_active: true
+    )
+
+    StaffMonthlyResult.create!(
+      user: active_member,
+      work_month: Date.new(2026, 1, 1),
+      salary: 310_000,
+      legal_welfare: 50_000,
+      welfare: 12_010,
+      bonus: 70_000
+    )
+    StaffMonthlyResult.create!(
+      user: inactive_member,
+      work_month: Date.new(2026, 1, 1),
+      salary: 300_000,
+      legal_welfare: 48_000,
+      welfare: 12_000,
+      bonus: 0
+    )
+    StaffMonthlyResult.create!(
+      user: active_admin,
+      work_month: Date.new(2026, 1, 1),
+      salary: 400_000,
+      legal_welfare: 64_000,
+      welfare: 15_000,
+      bonus: 100_000
+    )
+
+    get master_path, headers: { "X-Inertia" => "true" }
+
+    assert_response :success
+
+    payload = JSON.parse(response.body)
+    staff_monthly_results = payload.dig("props", "staff_monthly_results")
+    assert staff_monthly_results.present?
+
+    response_row = staff_monthly_results.find do |row|
+      row["user_id"] == active_member.id && row["work_month"] == "2026-01"
+    end
+
+    assert_not_nil response_row
+    assert_equal 310_000, response_row["salary"]
+    assert_equal 50_000, response_row["legal_welfare"]
+    assert_equal 12_010, response_row["welfare"]
+    assert_equal 70_000, response_row["bonus"]
+    assert_match(/\A\d{4}-\d{2}\z/, response_row["work_month"])
+
+    assert_nil staff_monthly_results.find { |row| row["user_id"] == inactive_member.id }
+    assert_nil staff_monthly_results.find { |row| row["user_id"] == active_admin.id }
+  end
 end

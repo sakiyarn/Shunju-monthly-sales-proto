@@ -20,6 +20,7 @@ Rails.application.routes.draw do
   resources :project_members, only: %i[create update destroy]
   post "/billing_work_logs/bulk_upsert", to: "billing_work_logs#bulk_upsert"
   post "/monthly_business_days/bulk_upsert", to: "monthly_business_days#bulk_upsert"
+  post "/staff_monthly_results/bulk_upsert", to: "staff_monthly_results#bulk_upsert"
   resource :monthly_accounting_data_import, only: :create
   resources :monthly_accounting_data_histories, only: [] do
     post :restore, on: :member

@@ -508,13 +508,86 @@
       </div>
     </section>
 
-    <section class="card">
-      <h2 class="card-title">💼 セクション7: メンバー原価データ（月次）</h2>
-      <div class="ag-theme-quartz h-[320px] w-full">
-        <AgGridVue class="h-full w-full" :rowData="memberCostRows" :columnDefs="memberCostMatrixColDefs" :defaultColDef="defaultColDef" @cell-value-changed="onCostMatrixChanged" />
+    <section class="card master-s7-card transition-colors duration-200" :class="s7Edited ? 'border-amber-300 bg-amber-50/60' : ''">
+      <div class="master-s7-head">
+        <div class="master-s7-head-main">
+          <h2 class="card-title mb-0">💼 セクション7: メンバー原価データ（月次）</h2>
+          <div class="master-s7-status">
+            <span
+              v-if="s7Edited"
+              class="inline-flex items-center rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900"
+            >
+              未保存
+            </span>
+          </div>
+        </div>
+        <div class="master-s7-head-actions">
+          <p class="master-s7-head-note">操作ミス時は「未保存を破棄」で入力前の状態に戻せます。</p>
+          <button
+            class="master-s7-reset-btn"
+            :disabled="!s7Edited || s7State.processing"
+            @click="resetS7DraftWithConfirm"
+          >
+            未保存を破棄
+          </button>
+        </div>
       </div>
-      <p v-if="errors.s7" class="error-msg">{{ errors.s7 }}</p>
-      <button class="btn-save" @click="saveSection('s7')">保存</button>
+
+      <div class="master-s7-toolbar">
+        <div class="master-s7-pane">
+          <p class="master-s7-pane-label">表示設定</p>
+          <div class="flex flex-wrap items-center gap-2">
+            <label class="text-sm text-slate-700">
+              表示軸
+              <select class="input ml-2 master-s7-axis-select" :value="s7DisplayMode" @change="onS7DisplayModeChanged(($event.target as HTMLSelectElement).value)">
+                <option value="calendar">暦年（1月〜12月）</option>
+                <option value="fiscal">決算年度（7月〜翌6月）</option>
+              </select>
+            </label>
+            <label v-if="s7DisplayMode === 'calendar'" class="text-sm text-slate-700">
+              年
+              <select class="input ml-2 master-s7-year-select" :value="s7CalendarYear" @change="onS7CalendarYearChanged(($event.target as HTMLSelectElement).value)">
+                <option v-for="year in s7CalendarYears" :key="`s7-calendar-${year}`" :value="year">{{ year }}年</option>
+              </select>
+            </label>
+            <label v-else class="text-sm text-slate-700">
+              決算年度
+              <select class="input ml-2 master-s7-year-select" :value="s7FiscalYear" @change="onS7FiscalYearChanged(($event.target as HTMLSelectElement).value)">
+                <option v-for="year in s7FiscalYears" :key="`s7-fiscal-${year}`" :value="year">{{ formatFiscalTermLabel(year) }}</option>
+              </select>
+            </label>
+          </div>
+          <div class="master-s7-shortcuts" aria-label="S7 keyboard shortcuts">
+            <span class="master-s7-shortcut-chip">Enter: 編集開始 / 確定して下へ</span>
+            <span class="master-s7-shortcut-chip">Tab: 右セルへ移動</span>
+            <span class="master-s7-shortcut-chip">矢印キー: セル移動</span>
+          </div>
+          <p class="master-s7-readonly-note">
+            <span class="master-s7-readonly-dot" aria-hidden="true" />
+            社内原価(h)は営業日数を使った自動計算列です（編集不可）。
+          </p>
+        </div>
+      </div>
+
+      <p v-if="errors.s7" class="mb-3 error-msg whitespace-pre-line">{{ errors.s7 }}</p>
+      <p v-if="s7Rows.length === 0" class="mb-3 text-sm text-slate-500">表示対象のメンバーがありません。</p>
+      <div class="ag-theme-quartz h-[320px] w-full">
+        <AgGridVue
+          class="s7-grid h-full w-full"
+          :rowData="s7Rows"
+          :columnDefs="s7CostMatrixColDefs"
+          :defaultColDef="defaultColDef"
+          :enterNavigatesVertically="false"
+          :enterNavigatesVerticallyAfterEdit="true"
+          @grid-ready="onS7GridReady"
+          @cell-value-changed="onS7CellChanged"
+        />
+      </div>
+      <div class="master-s7-footer">
+        <button class="btn-save cursor-pointer" :disabled="s7State.processing || s7Rows.length === 0" @click="saveSection('s7')">
+          {{ s7Edited ? '保存（未保存あり）' : '保存' }}
+        </button>
+      </div>
     </section>
 
     <section class="card">
@@ -746,6 +819,15 @@ interface MonthlyBusinessDayRecord {
   business_days: number | null
 }
 
+interface StaffMonthlyResultRecord {
+  user_id: number
+  work_month: string
+  salary: number
+  legal_welfare: number
+  welfare: number
+  bonus: number
+}
+
 interface MonthlyAccountingHistoryRecord {
   id: number
   event_type: string
@@ -806,6 +888,8 @@ type S5MetricKind = 'hours' | 'unitPrice'
 type S5UnsavedAction = 'save' | 'discard' | 'cancel'
 type S6DisplayMode = 'calendar' | 'fiscal'
 type S6UnsavedAction = 'save' | 'discard' | 'cancel'
+type S7DisplayMode = 'calendar' | 'fiscal'
+type S7UnsavedAction = 'save' | 'discard' | 'cancel'
 const FISCAL_TERM_START_YEAR = 2022
 const FISCAL_YEAR_START_MONTH = 7
 
@@ -828,6 +912,7 @@ const props = defineProps<{
   s5_month_keys: string[]
   billing_work_logs: BillingWorkLogRecord[]
   monthly_business_days: MonthlyBusinessDayRecord[]
+  staff_monthly_results: StaffMonthlyResultRecord[]
   monthly_accounting_data: MonthlyAccountingDataRecord[]
   monthly_accounting_histories: MonthlyAccountingHistoryRecord[]
   initialData?: Record<string, unknown>
@@ -867,6 +952,12 @@ interface S5DisplaySelection {
 
 interface S6DisplaySelection {
   mode: S6DisplayMode
+  calendarYear: number
+  fiscalYear: number
+}
+
+interface S7DisplaySelection {
+  mode: S7DisplayMode
   calendarYear: number
   fiscalYear: number
 }
@@ -1423,22 +1514,156 @@ const s6BusinessDaysForMonth = (monthKeyValue: string) => {
 rebuildS6BusinessDaysRow()
 
 type CostPart = 'salary' | 'legal' | 'welfare' | 'bonus' | 'internal'
-const editableCostParts: CostPart[] = ['salary', 'legal', 'welfare', 'bonus']
+type EditableCostPart = Exclude<CostPart, 'internal'>
+const editableCostParts: EditableCostPart[] = ['salary', 'legal', 'welfare', 'bonus']
+
+interface S7CostValues {
+  salary: number
+  legal: number
+  welfare: number
+  bonus: number
+}
+
+interface ParsedS7CostField {
+  monthKey: string
+  part: EditableCostPart
+}
+
+const s7StepByPart: Record<EditableCostPart, number> = {
+  salary: 1000,
+  legal: 1000,
+  welfare: 10,
+  bonus: 1000
+}
+const s7PartLabelByKey: Record<EditableCostPart, string> = {
+  salary: '給与',
+  legal: '法定福利費',
+  welfare: '福利厚生費',
+  bonus: '賞与'
+}
 
 const costField = (monthKey: string, part: CostPart) => `${monthKey}_${part}`
 
-const recalcInternalCost = (row: Record<string, unknown>) => {
-  visibleMonths.value.forEach((m) => {
-    const salary = Number(row[costField(m.key, 'salary')]) || 0
-    const legal = Number(row[costField(m.key, 'legal')]) || 0
-    const welfare = Number(row[costField(m.key, 'welfare')]) || 0
-    const bonus = Number(row[costField(m.key, 'bonus')]) || 0
-    const days = s6BusinessDaysForMonth(m.key)
-    row[costField(m.key, 'internal')] = Math.round((salary + legal + welfare + bonus) / days / 8)
+const normalizeS7Amount = (value: unknown) => {
+  const parsed = Number.parseInt(String(value ?? 0), 10)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+const parseS7EditableField = (field: string): ParsedS7CostField | null => {
+  const match = field.match(/^(\d{4}-\d{2})_(salary|legal|welfare|bonus)$/)
+  if (!match) return null
+  return { monthKey: match[1], part: match[2] as EditableCostPart }
+}
+
+const s7CostValuesFor = (row: Record<string, unknown>, monthKeyValue: string): S7CostValues => {
+  return {
+    salary: normalizeS7Amount(row[costField(monthKeyValue, 'salary')]),
+    legal: normalizeS7Amount(row[costField(monthKeyValue, 'legal')]),
+    welfare: normalizeS7Amount(row[costField(monthKeyValue, 'welfare')]),
+    bonus: normalizeS7Amount(row[costField(monthKeyValue, 'bonus')])
+  }
+}
+
+const s7DataMonthKeys = computed(() => [...new Set(props.staff_monthly_results.map((row) => row.work_month))].sort())
+const s7DisplayMode = ref<S7DisplayMode>('calendar')
+
+const s7CalendarYears = computed(() => {
+  const years = new Set<number>(
+    s7DataMonthKeys.value.map((monthKeyValue) => Number(monthKeyValue.slice(0, 4))).filter((year) => Number.isInteger(year))
+  )
+  fallbackYears.forEach((year) => years.add(year))
+  return [...years].sort((a, b) => a - b)
+})
+
+const s7FiscalYears = computed(() => {
+  const years = new Set<number>(
+    s7DataMonthKeys.value
+      .map((monthKeyValue) => toFiscalYear(monthKeyValue))
+      .filter((year): year is number => year !== null)
+  )
+  fallbackYears.forEach((year) => years.add(year))
+  return [...years].sort((a, b) => a - b)
+})
+
+const s7CalendarYear = ref<number>(s7CalendarYears.value[s7CalendarYears.value.length - 1] ?? currentYear)
+const s7FiscalYear = ref<number>(s7FiscalYears.value[s7FiscalYears.value.length - 1] ?? currentFiscalYear)
+const s7MonthKeys = computed(() => buildDisplayMonthKeys(s7DisplayMode.value, s7CalendarYear.value, s7FiscalYear.value))
+const s7Rows = ref<Record<string, unknown>[]>([])
+const s7State = reactive({
+  processing: false,
+  rebuilding: false
+})
+const s7Edited = ref(false)
+const s7DirtyCellKeys = reactive(new Set<string>())
+const pendingS7DisplayChange = ref<S7DisplaySelection | null>(null)
+const s7GridApi = ref<GridApi | null>(null)
+
+const buildS7PersistedValueKey = (userId: number, monthKeyValue: string) => `${userId}:${monthKeyValue}`
+const buildS7DirtyCellKey = (userId: number, monthKeyValue: string, part: EditableCostPart) => `${userId}:${monthKeyValue}:${part}`
+
+const s7PersistedValuesByKey = computed(() => {
+  return new Map(
+    props.staff_monthly_results.map((row) => [
+      buildS7PersistedValueKey(row.user_id, row.work_month),
+      {
+        salary: Number(row.salary) || 0,
+        legal: Number(row.legal_welfare) || 0,
+        welfare: Number(row.welfare) || 0,
+        bonus: Number(row.bonus) || 0
+      }
+    ])
+  )
+})
+
+const s7PersistedValueFor = (userId: number, monthKeyValue: string): S7CostValues => {
+  return s7PersistedValuesByKey.value.get(buildS7PersistedValueKey(userId, monthKeyValue)) ?? {
+    salary: 0,
+    legal: 0,
+    welfare: 0,
+    bonus: 0
+  }
+}
+
+const clearS7DirtyCells = () => {
+  s7DirtyCellKeys.clear()
+  s7Edited.value = false
+  s7GridApi.value?.refreshCells({ force: true })
+}
+
+const syncS7DirtyCell = (userId: number, monthKeyValue: string, part: EditableCostPart, currentValue: number) => {
+  const persisted = s7PersistedValueFor(userId, monthKeyValue)
+  const persistedValue = persisted[part]
+  const dirtyKey = buildS7DirtyCellKey(userId, monthKeyValue, part)
+
+  if (currentValue === persistedValue) {
+    s7DirtyCellKeys.delete(dirtyKey)
+  } else {
+    s7DirtyCellKeys.add(dirtyKey)
+  }
+
+  s7Edited.value = s7DirtyCellKeys.size > 0
+}
+
+const isS7DirtyCell = (userId: number, monthKeyValue: string, part: EditableCostPart) => {
+  return s7DirtyCellKeys.has(buildS7DirtyCellKey(userId, monthKeyValue, part))
+}
+
+const recalcInternalCostByMonthKeys = (row: Record<string, unknown>, monthKeys: string[]) => {
+  monthKeys.forEach((monthKeyValue) => {
+    const salary = normalizeS7Amount(row[costField(monthKeyValue, 'salary')])
+    const legal = normalizeS7Amount(row[costField(monthKeyValue, 'legal')])
+    const welfare = normalizeS7Amount(row[costField(monthKeyValue, 'welfare')])
+    const bonus = normalizeS7Amount(row[costField(monthKeyValue, 'bonus')])
+    const days = s6BusinessDaysForMonth(monthKeyValue)
+    row[costField(monthKeyValue, 'internal')] = Math.round((salary + legal + welfare + bonus) / days / 8)
   })
 }
 
-const createCostMatrixRows = (members: string[], salaryBase: number, officerMode = false) => {
+const recalcInternalCost = (row: Record<string, unknown>) => {
+  recalcInternalCostByMonthKeys(row, visibleMonths.value.map((month) => month.key))
+}
+
+const createLegacyCostMatrixRows = (members: string[], salaryBase: number, officerMode = false) => {
   return members.map((member, memberIndex) => {
     const row: Record<string, unknown> = { member }
     visibleMonths.value.forEach((m, monthIndex) => {
@@ -1459,11 +1684,54 @@ const createCostMatrixRows = (members: string[], salaryBase: number, officerMode
   })
 }
 
-const memberCostRows = reactive(createCostMatrixRows(
-  ['鈴木 一郎', '高橋 春菜', '伊藤 翔', '渡辺 美咲', '山本 隆', '中村 彩', '小林 健', '加藤 綾'],
-  280000
-))
-const officerCostRows = reactive(createCostMatrixRows(['代表A', '代表B'], 500000, true))
+const s7TargetMembers = computed(() => {
+  return [...props.users]
+    .filter((user) => user.is_active && user.system_role === 'member')
+    .sort((a, b) => {
+      if (a.display_order !== b.display_order) return a.display_order - b.display_order
+      return a.name.localeCompare(b.name, 'ja')
+    })
+})
+
+const s7MemberLabel = (user: UserRecord) => {
+  return `${user.name}(${user.role_name || '未設定'})`
+}
+
+const rebuildS7Rows = () => {
+  s7State.rebuilding = true
+  const monthKeys = s7MonthKeys.value
+
+  s7Rows.value = s7TargetMembers.value.map((user) => {
+    const row: Record<string, unknown> = {
+      userId: user.id,
+      member: s7MemberLabel(user)
+    }
+    monthKeys.forEach((monthKeyValue) => {
+      const persisted = s7PersistedValueFor(user.id, monthKeyValue)
+      row[costField(monthKeyValue, 'salary')] = persisted.salary
+      row[costField(monthKeyValue, 'legal')] = persisted.legal
+      row[costField(monthKeyValue, 'welfare')] = persisted.welfare
+      row[costField(monthKeyValue, 'bonus')] = persisted.bonus
+      row[costField(monthKeyValue, 'internal')] = 0
+    })
+    recalcInternalCostByMonthKeys(row, monthKeys)
+    return row
+  })
+
+  clearS7DirtyCells()
+  s7State.rebuilding = false
+}
+
+const refreshS7InternalCosts = () => {
+  s7Rows.value.forEach((row) => {
+    recalcInternalCostByMonthKeys(row, s7MonthKeys.value)
+  })
+  s7GridApi.value?.refreshCells({ force: true })
+}
+
+rebuildS7Rows()
+
+const officerCostRows = reactive(createLegacyCostMatrixRows(['代表A', '代表B'], 500000, true))
 
 const expenses = reactive<Expense[]>([
   { id: 'e1', month: '2025-11', name: 'Kaigi on Rails 参加費', amount: 100000, projectIds: ['p001', 'p002'] },
@@ -1574,6 +1842,68 @@ const businessDayColDefs = computed<ColDef[]>(() => [
   ...s6MonthKeys.value.map((monthKeyValue) => createS6BusinessDayColumn(monthKeyValue))
 ])
 
+const createS7EditableCostColumn = (monthKeyValue: string, part: EditableCostPart, label: string): ColDef => ({
+  field: costField(monthKeyValue, part),
+  headerName: label,
+  editable: true,
+  minWidth: part === 'bonus' ? 118 : 108,
+  width: part === 'bonus' ? 128 : 112,
+  maxWidth: part === 'bonus' ? 140 : 122,
+  cellEditor: 'agNumberCellEditor',
+  cellEditorParams: {
+    min: 0,
+    step: s7StepByPart[part],
+    showStepperButtons: true
+  },
+  valueSetter: (params: ValueSetterParams<Record<string, unknown>>) => {
+    if (!params.data) return false
+    params.data[costField(monthKeyValue, part)] = normalizeS7Amount(params.newValue)
+    return true
+  },
+  valueFormatter: (params: ValueFormatterParams<Record<string, unknown>>) => {
+    return formatYen(normalizeS7Amount(params.value))
+  },
+  cellClass: (params: CellClassParams<Record<string, unknown>>) => {
+    if (!params.data) return ''
+    const userId = Number(params.data.userId)
+    if (!Number.isInteger(userId)) return ''
+    return isS7DirtyCell(userId, monthKeyValue, part) ? 's7-cell-dirty' : ''
+  }
+})
+
+const s7CostMatrixColDefs = computed<Array<ColDef | ColGroupDef>>(() => [
+  {
+    field: 'member',
+    headerName: 'スタッフ',
+    pinned: 'left',
+    editable: false,
+    minWidth: 190,
+    cellStyle: { fontWeight: '700', background: '#f8fafc' }
+  },
+  ...s7MonthKeys.value.map((monthKeyValue) => ({
+    headerName: formatMonthLabel(monthKeyValue),
+    marryChildren: true,
+    children: [
+      createS7EditableCostColumn(monthKeyValue, 'salary', '給与'),
+      createS7EditableCostColumn(monthKeyValue, 'legal', '法定福利費'),
+      createS7EditableCostColumn(monthKeyValue, 'welfare', '福利厚生費'),
+      createS7EditableCostColumn(monthKeyValue, 'bonus', '賞与'),
+      {
+        field: costField(monthKeyValue, 'internal'),
+        headerName: '社内原価(h)',
+        headerTooltip: '営業日数を使った自動計算列（編集不可）',
+        headerClass: 'cost-readonly-header',
+        editable: false,
+        minWidth: 108,
+        width: 116,
+        maxWidth: 126,
+        cellClass: 'cost-readonly-cell',
+        valueFormatter: (params: ValueFormatterParams) => formatYen(Number(params.value) || 0)
+      }
+    ]
+  }))
+])
+
 const createCostMatrixColDefs = (salaryLabel: string, bonusLabel: string): Array<ColDef | ColGroupDef> => [
   {
     field: 'member',
@@ -1614,16 +1944,19 @@ const createCostMatrixColDefs = (salaryLabel: string, bonusLabel: string): Array
       {
         field: costField(m.key, 'internal'),
         headerName: '社内原価(h)',
+        headerTooltip: '営業日数を使った自動計算列（編集不可）',
+        headerClass: 'cost-readonly-header',
         editable: false,
-        minWidth: 120,
-        cellStyle: { fontWeight: '700' },
+        minWidth: 108,
+        width: 116,
+        maxWidth: 126,
+        cellClass: 'cost-readonly-cell',
         valueFormatter: (params: ValueFormatterParams) => formatYen(Number(params.value) || 0)
       }
     ]
   }))
 ]
 
-const memberCostMatrixColDefs = computed(() => createCostMatrixColDefs('給与', '賞与'))
 const officerCostMatrixColDefs = computed(() => createCostMatrixColDefs('役員報酬', '役員賞与'))
 
 const csvInput = ref<HTMLInputElement | null>(null)
@@ -1637,7 +1970,7 @@ const toast = reactive({ show: false, type: 'success' as 'success' | 'error', me
 
 const errors = reactive<Record<string, string>>({})
 const dirty = ref(false)
-const hasUnsavedChanges = computed(() => dirty.value || s5Edited.value || s6Edited.value)
+const hasUnsavedChanges = computed(() => dirty.value || s5Edited.value || s6Edited.value || s7Edited.value)
 let skipDirtyTracking = true
 let suppressBeforeVisitGuard = false
 
@@ -2310,6 +2643,10 @@ function onS6GridReady(event: GridReadyEvent) {
   s6GridApi.value = event.api
 }
 
+function onS7GridReady(event: GridReadyEvent) {
+  s7GridApi.value = event.api
+}
+
 function applyS5ProjectSwitch(projectId: number) {
   isSwitchingS5Project.value = true
   activeWorkProjectId.value = projectId
@@ -2542,6 +2879,105 @@ function resetS6DraftWithConfirm() {
   discardS6DraftAndRun(() => {})
 }
 
+function applyS7DisplayChange(selection: S7DisplaySelection) {
+  s7DisplayMode.value = selection.mode
+  s7CalendarYear.value = selection.calendarYear
+  s7FiscalYear.value = selection.fiscalYear
+}
+
+function promptS7UnsavedAction(): S7UnsavedAction {
+  const answer = window.prompt(
+    'S7に未保存の変更があります。\n1: 保存して切替\n2: 破棄して切替\n3: キャンセル',
+    '3'
+  )
+  if (answer === '1') return 'save'
+  if (answer === '2') return 'discard'
+  return 'cancel'
+}
+
+function discardS7DraftAndRun(action: () => void) {
+  rebuildS7Rows()
+  clearErrors('s7')
+  pendingS7DisplayChange.value = null
+  action()
+}
+
+function confirmS7UnsavedAndRun(action: () => void, onSave: () => void) {
+  if (!s7Edited.value) {
+    action()
+    return
+  }
+  if (s7State.processing) return
+
+  const decision = promptS7UnsavedAction()
+  if (decision === 'save') {
+    onSave()
+    return
+  }
+  if (decision === 'discard') {
+    discardS7DraftAndRun(action)
+  }
+}
+
+function attemptChangeS7Display(selection: S7DisplaySelection) {
+  if (
+    selection.mode === s7DisplayMode.value &&
+    selection.calendarYear === s7CalendarYear.value &&
+    selection.fiscalYear === s7FiscalYear.value
+  ) {
+    return
+  }
+
+  confirmS7UnsavedAndRun(
+    () => {
+      pendingS7DisplayChange.value = null
+      applyS7DisplayChange(selection)
+    },
+    () => {
+      pendingS7DisplayChange.value = selection
+      saveSection('s7')
+    }
+  )
+}
+
+function onS7DisplayModeChanged(value: string) {
+  const mode: S7DisplayMode = value === 'fiscal' ? 'fiscal' : 'calendar'
+  attemptChangeS7Display({
+    mode,
+    calendarYear: s7CalendarYear.value,
+    fiscalYear: s7FiscalYear.value
+  })
+}
+
+function onS7CalendarYearChanged(value: string) {
+  const year = Number(value)
+  if (!Number.isInteger(year)) return
+  attemptChangeS7Display({
+    mode: 'calendar',
+    calendarYear: year,
+    fiscalYear: s7FiscalYear.value
+  })
+}
+
+function onS7FiscalYearChanged(value: string) {
+  const year = Number(value)
+  if (!Number.isInteger(year)) return
+  attemptChangeS7Display({
+    mode: 'fiscal',
+    calendarYear: s7CalendarYear.value,
+    fiscalYear: year
+  })
+}
+
+function resetS7DraftWithConfirm() {
+  if (!s7Edited.value || s7State.processing) return
+
+  const confirmed = window.confirm('未保存の変更を破棄して元の状態に戻します。よろしいですか？\nこの操作は保存されません。')
+  if (!confirmed) return
+
+  discardS7DraftAndRun(() => {})
+}
+
 function onWorkCellChanged(event: {
   colDef?: { field?: string }
   data?: Record<string, unknown>
@@ -2596,6 +3032,41 @@ function onS6CellChanged(event: {
     columns: [field],
     force: true
   })
+
+  refreshS7InternalCosts()
+}
+
+function onS7CellChanged(event: {
+  colDef?: { field?: string }
+  data?: Record<string, unknown>
+  api?: { refreshCells?: (params?: { rowNodes?: unknown[]; columns?: string[]; force?: boolean }) => void }
+  node?: unknown
+}) {
+  if (s7State.rebuilding) return
+
+  const field = event.colDef?.field
+  const row = event.data
+  if (!field || !row) return
+
+  const parsed = parseS7EditableField(field)
+  if (!parsed || !s7MonthKeys.value.includes(parsed.monthKey)) return
+
+  const normalized = normalizeS7Amount(row[field])
+  row[field] = normalized
+
+  const userId = Number(row.userId)
+  if (!Number.isInteger(userId)) return
+
+  syncS7DirtyCell(userId, parsed.monthKey, parsed.part, normalized)
+  recalcInternalCostByMonthKeys(row, s7MonthKeys.value)
+
+  event.api?.refreshCells?.({
+    rowNodes: event.node ? [event.node] : undefined,
+    columns: [field, costField(parsed.monthKey, 'internal')],
+    force: true
+  })
+
+  markDirty()
 }
 
 function onCostMatrixChanged(event: { data?: Record<string, unknown>; api?: { refreshCells?: (params?: unknown) => void }; node?: unknown }) {
@@ -2755,13 +3226,35 @@ function validateSection(section: string) {
     return true
   }
   if (section === 's7') {
-    const invalid = memberCostRows.some((row) =>
-      visibleMonths.value.some((m) =>
-        editableCostParts.some((part) => Number.isNaN(Number(row[costField(m.key, part)])))
-      )
-    )
-    if (invalid) errors.s7 = 'メンバー原価データは数値で入力してください。'
-    return !invalid
+    if (s7Rows.value.length === 0) {
+      errors.s7 = '表示対象のメンバーがありません。'
+      return false
+    }
+
+    const messages: string[] = []
+    s7Rows.value.forEach((row) => {
+      const member = String(row.member ?? '不明メンバー')
+      s7MonthKeys.value.forEach((monthKeyValue) => {
+        const values = s7CostValuesFor(row, monthKeyValue)
+        editableCostParts.forEach((part) => {
+          const value = values[part]
+          if (!Number.isInteger(value) || value < 0) {
+            messages.push(`${member} ${formatMonthLabel(monthKeyValue)} ${s7PartLabelByKey[part]}は0以上の整数で入力してください`)
+            return
+          }
+          const step = s7StepByPart[part]
+          if (value % step !== 0) {
+            messages.push(`${member} ${formatMonthLabel(monthKeyValue)} ${s7PartLabelByKey[part]}は${step}円単位で入力してください`)
+          }
+        })
+      })
+    })
+
+    if (messages.length > 0) {
+      errors.s7 = messages.slice(0, 5).join('\n')
+      return false
+    }
+    return true
   }
   if (section === 's8') {
     const invalid = officerCostRows.some((row) =>
@@ -2805,6 +3298,10 @@ function saveSection(section: string) {
   }
   if (section === 's6') {
     void submitS6()
+    return
+  }
+  if (section === 's7') {
+    void submitS7()
     return
   }
   if (section === 's10') {
@@ -2913,6 +3410,60 @@ function submitS6() {
   })
 }
 
+function submitS7() {
+  const entries = s7Rows.value.flatMap((row) => {
+    const userId = Number(row.userId)
+    if (!Number.isInteger(userId)) return []
+    return s7MonthKeys.value.map((monthKeyValue) => {
+      const values = s7CostValuesFor(row, monthKeyValue)
+      return {
+        user_id: userId,
+        work_month: monthKeyValue,
+        salary: values.salary,
+        legal_welfare: values.legal,
+        welfare: values.welfare,
+        bonus: values.bonus
+      }
+    })
+  })
+
+  s7State.processing = true
+  suppressBeforeVisitGuard = true
+  clearErrors('s7')
+
+  router.post('/staff_monthly_results/bulk_upsert', {
+    entries
+  }, {
+    preserveScroll: true,
+    preserveState: true,
+    onSuccess: () => {
+      dirty.value = false
+      clearErrors('s7')
+      clearS7DirtyCells()
+
+      if (pendingS7DisplayChange.value) {
+        const nextDisplay = pendingS7DisplayChange.value
+        pendingS7DisplayChange.value = null
+        applyS7DisplayChange(nextDisplay)
+      }
+    },
+    onError: (serverErrors) => {
+      errors.s7 = firstInertiaError(serverErrors, 'entries') ||
+        firstInertiaError(serverErrors, 'user_id') ||
+        firstInertiaError(serverErrors, 'work_month') ||
+        firstInertiaError(serverErrors, 'salary') ||
+        firstInertiaError(serverErrors, 'legal_welfare') ||
+        firstInertiaError(serverErrors, 'welfare') ||
+        firstInertiaError(serverErrors, 'bonus') ||
+        'S7を保存できませんでした。'
+    },
+    onFinish: () => {
+      s7State.processing = false
+      suppressBeforeVisitGuard = false
+    }
+  })
+}
+
 const beforeUnload = (event: BeforeUnloadEvent) => {
   if (!hasUnsavedChanges.value) return
   event.preventDefault()
@@ -2984,6 +3535,20 @@ watch(s6FiscalYears, (years) => {
   }
 }, { immediate: true })
 
+watch(s7CalendarYears, (years) => {
+  if (years.length === 0) return
+  if (!years.includes(s7CalendarYear.value)) {
+    s7CalendarYear.value = years[years.length - 1]
+  }
+}, { immediate: true })
+
+watch(s7FiscalYears, (years) => {
+  if (years.length === 0) return
+  if (!years.includes(s7FiscalYear.value)) {
+    s7FiscalYear.value = years[years.length - 1]
+  }
+}, { immediate: true })
+
 watch(
   () => props.projects,
   (nextProjects) => {
@@ -3039,6 +3604,11 @@ watch([s5DisplayMode, s5CalendarYear, s5FiscalYear], () => {
 
 watch([s6DisplayMode, s6CalendarYear, s6FiscalYear], () => {
   rebuildS6BusinessDaysRow()
+  refreshS7InternalCosts()
+})
+
+watch([s7DisplayMode, s7CalendarYear, s7FiscalYear], () => {
+  rebuildS7Rows()
 })
 
 watch(
@@ -3046,6 +3616,16 @@ watch(
   () => {
     if (s6Edited.value && !s6State.processing) return
     rebuildS6BusinessDaysRow()
+    refreshS7InternalCosts()
+  },
+  { deep: true }
+)
+
+watch(
+  [() => props.staff_monthly_results, () => props.users],
+  () => {
+    if (s7Edited.value && !s7State.processing) return
+    rebuildS7Rows()
   },
   { deep: true }
 )
@@ -3068,7 +3648,7 @@ watch(
   { immediate: true, deep: true }
 )
 
-watch([users, projects, expenses, adjustments, memberCostRows, officerCostRows], () => {
+watch([users, projects, expenses, adjustments, officerCostRows], () => {
   if (skipDirtyTracking) return
   markDirty()
 }, { deep: true })

@@ -9,6 +9,7 @@ class MasterController < InertiaController
       project_members: project_members_payload,
       s5_month_keys: s5_month_keys_payload,
       billing_work_logs: billing_work_logs_payload,
+      staff_monthly_results: staff_monthly_results_payload,
       monthly_business_days: monthly_business_days_payload,
       monthly_accounting_data: monthly_accounting_data_payload,
       monthly_accounting_histories: monthly_accounting_histories_payload
@@ -113,6 +114,23 @@ class MasterController < InertiaController
         {
           work_month: row.work_month.strftime("%Y-%m"),
           business_days: row.business_days
+        }
+      end
+  end
+
+  def staff_monthly_results_payload
+    StaffMonthlyResult
+      .joins(:user)
+      .where(users: { is_active: true, system_role: "member" })
+      .order(:user_id, :work_month)
+      .map do |row|
+        {
+          user_id: row.user_id,
+          work_month: row.work_month.strftime("%Y-%m"),
+          salary: row.salary.to_i,
+          legal_welfare: row.legal_welfare.to_i,
+          welfare: row.welfare.to_i,
+          bonus: row.bonus.to_i
         }
       end
   end
