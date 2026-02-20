@@ -2234,7 +2234,12 @@ function resetS5DraftWithConfirm() {
   discardS5DraftAndRun(() => {})
 }
 
-function onWorkCellChanged(event: { colDef?: { field?: string }; data?: Record<string, unknown> }) {
+function onWorkCellChanged(event: {
+  colDef?: { field?: string }
+  data?: Record<string, unknown>
+  api?: { refreshCells?: (params?: { rowNodes?: unknown[]; columns?: string[]; force?: boolean }) => void }
+  node?: unknown
+}) {
   const field = event.colDef?.field
   const row = event.data
   if (!field || !row) {
@@ -2255,6 +2260,11 @@ function onWorkCellChanged(event: { colDef?: { field?: string }; data?: Record<s
   if (Number.isInteger(projectId) && Number.isInteger(userId)) {
     const currentValue = normalizeS5CellValue(row[parsed.monthKey])
     syncS5DirtyCell(projectId, userId, parsed.monthKey, parsed.kind, currentValue)
+    event.api?.refreshCells?.({
+      rowNodes: event.node ? [event.node] : undefined,
+      columns: [field],
+      force: true
+    })
   }
 
   markDirty()
