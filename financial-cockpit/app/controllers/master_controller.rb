@@ -9,6 +9,7 @@ class MasterController < InertiaController
       project_members: project_members_payload,
       s5_month_keys: s5_month_keys_payload,
       billing_work_logs: billing_work_logs_payload,
+      monthly_business_days: monthly_business_days_payload,
       monthly_accounting_data: monthly_accounting_data_payload,
       monthly_accounting_histories: monthly_accounting_histories_payload
     }
@@ -101,6 +102,17 @@ class MasterController < InertiaController
           gross_profit: decimal_to_number(row.gross_profit),
           selling_general_admin_cost: decimal_to_number(row.selling_general_admin_cost),
           accounting_operating_profit: decimal_to_number(row.accounting_operating_profit)
+        }
+      end
+  end
+
+  def monthly_business_days_payload
+    MonthlyBusinessDay
+      .order(:work_month)
+      .map do |row|
+        {
+          work_month: row.work_month.strftime("%Y-%m"),
+          business_days: row.business_days
         }
       end
   end
