@@ -106,6 +106,25 @@ class MasterControllerTest < ActionDispatch::IntegrationTest
     assert_equal "import", response_history["event_type"]
   end
 
+  test "master includes monthly business days props" do
+    record = MonthlyBusinessDay.create!(
+      work_month: Date.new(2026, 2, 1),
+      business_days: 19
+    )
+
+    get master_path, headers: { "X-Inertia" => "true" }
+
+    assert_response :success
+
+    payload = JSON.parse(response.body)
+    monthly_business_days = payload.dig("props", "monthly_business_days")
+    assert monthly_business_days.present?
+
+    response_row = monthly_business_days.find { |item| item["work_month"] == record.work_month.strftime("%Y-%m") }
+    assert_not_nil response_row
+    assert_equal 19, response_row["business_days"]
+  end
+
   test "master includes s5 month keys and billing work logs props" do
     project = Project.create!(name: "S5案件", is_active: true)
     user = User.create!(

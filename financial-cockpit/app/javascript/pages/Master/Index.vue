@@ -431,12 +431,81 @@
       </div>
     </section>
 
-    <section class="card">
-      <h2 class="card-title">🗓️ セクション6: 月次営業日数</h2>
-      <div class="ag-theme-quartz h-[160px] w-full">
-        <AgGridVue class="h-full w-full" :rowData="[businessDaysRow]" :columnDefs="businessDayColDefs" :defaultColDef="defaultColDef" @cell-value-changed="markDirty" />
+    <section class="card master-s6-card transition-colors duration-200" :class="s6Edited ? 'border-amber-300 bg-amber-50/60' : ''">
+      <div class="master-s6-head">
+        <div class="master-s6-head-main">
+          <h2 class="card-title mb-0">🗓️ セクション6: 月次営業日数</h2>
+          <div class="master-s6-status">
+            <span
+              v-if="s6Edited"
+              class="inline-flex items-center rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900"
+            >
+              未保存
+            </span>
+          </div>
+        </div>
+        <div class="master-s6-head-actions">
+          <p class="master-s6-head-note">操作ミス時は「未保存を破棄」で入力前の状態に戻せます。</p>
+          <button
+            class="master-s6-reset-btn"
+            :disabled="!s6Edited || s6State.processing"
+            @click="resetS6DraftWithConfirm"
+          >
+            未保存を破棄
+          </button>
+        </div>
       </div>
-      <button class="btn-save" @click="saveSection('s6')">保存</button>
+
+      <div class="master-s6-toolbar">
+        <div class="master-s6-pane">
+          <p class="master-s6-pane-label">表示設定</p>
+          <div class="flex flex-wrap items-center gap-2">
+            <label class="text-sm text-slate-700">
+              表示軸
+              <select class="input ml-2" :value="s6DisplayMode" @change="onS6DisplayModeChanged(($event.target as HTMLSelectElement).value)">
+                <option value="calendar">暦年（1月〜12月）</option>
+                <option value="fiscal">決算年度（7月〜翌6月）</option>
+              </select>
+            </label>
+            <label v-if="s6DisplayMode === 'calendar'" class="text-sm text-slate-700">
+              年
+              <select class="input ml-2" :value="s6CalendarYear" @change="onS6CalendarYearChanged(($event.target as HTMLSelectElement).value)">
+                <option v-for="year in s6CalendarYears" :key="`s6-calendar-${year}`" :value="year">{{ year }}年</option>
+              </select>
+            </label>
+            <label v-else class="text-sm text-slate-700">
+              決算年度
+              <select class="input ml-2" :value="s6FiscalYear" @change="onS6FiscalYearChanged(($event.target as HTMLSelectElement).value)">
+                <option v-for="year in s6FiscalYears" :key="`s6-fiscal-${year}`" :value="year">{{ formatFiscalTermLabel(year) }}</option>
+              </select>
+            </label>
+          </div>
+          <div class="master-s6-shortcuts" aria-label="S6 keyboard shortcuts">
+            <span class="master-s6-shortcut-chip">Enter: 編集開始 / 確定して下へ</span>
+            <span class="master-s6-shortcut-chip">Tab: 右セルへ移動</span>
+            <span class="master-s6-shortcut-chip">矢印キー: セル移動</span>
+          </div>
+        </div>
+      </div>
+
+      <p v-if="errors.s6" class="mb-3 error-msg whitespace-pre-line">{{ errors.s6 }}</p>
+      <div class="ag-theme-quartz h-[220px] w-full">
+        <AgGridVue
+          class="s6-grid h-full w-full"
+          :rowData="[businessDaysRow]"
+          :columnDefs="businessDayColDefs"
+          :defaultColDef="defaultColDef"
+          :enterNavigatesVertically="false"
+          :enterNavigatesVerticallyAfterEdit="true"
+          @grid-ready="onS6GridReady"
+          @cell-value-changed="onS6CellChanged"
+        />
+      </div>
+      <div class="master-s6-footer">
+        <button class="btn-save cursor-pointer" :disabled="s6State.processing" @click="saveSection('s6')">
+          {{ s6Edited ? '保存（未保存あり）' : '保存' }}
+        </button>
+      </div>
     </section>
 
     <section class="card">
@@ -672,6 +741,11 @@ interface MonthlyAccountingDataRecord {
   accounting_operating_profit: number | null
 }
 
+interface MonthlyBusinessDayRecord {
+  work_month: string
+  business_days: number | null
+}
+
 interface MonthlyAccountingHistoryRecord {
   id: number
   event_type: string
@@ -730,7 +804,10 @@ type S3MemberSortMode = 'section_order' | 'unit_price_desc'
 type S5DisplayMode = 'calendar' | 'fiscal'
 type S5MetricKind = 'hours' | 'unitPrice'
 type S5UnsavedAction = 'save' | 'discard' | 'cancel'
+type S6DisplayMode = 'calendar' | 'fiscal'
+type S6UnsavedAction = 'save' | 'discard' | 'cancel'
 const FISCAL_TERM_START_YEAR = 2022
+const FISCAL_YEAR_START_MONTH = 7
 
 interface InertiaFlash {
   notice?: string
@@ -750,6 +827,7 @@ const props = defineProps<{
   project_members: ProjectMemberRecord[]
   s5_month_keys: string[]
   billing_work_logs: BillingWorkLogRecord[]
+  monthly_business_days: MonthlyBusinessDayRecord[]
   monthly_accounting_data: MonthlyAccountingDataRecord[]
   monthly_accounting_histories: MonthlyAccountingHistoryRecord[]
   initialData?: Record<string, unknown>
@@ -783,6 +861,12 @@ interface PersistedBillingAdjustment {
 
 interface S5DisplaySelection {
   mode: S5DisplayMode
+  calendarYear: number
+  fiscalYear: number
+}
+
+interface S6DisplaySelection {
+  mode: S6DisplayMode
   calendarYear: number
   fiscalYear: number
 }
@@ -1040,7 +1124,7 @@ const s5DisplayMode = ref<S5DisplayMode>('calendar')
 const now = new Date()
 const currentYear = now.getFullYear()
 const currentMonth = now.getMonth() + 1
-const currentFiscalYear = currentMonth >= 7 ? currentYear : currentYear - 1
+const currentFiscalYear = currentMonth >= FISCAL_YEAR_START_MONTH ? currentYear : currentYear - 1
 const fallbackYears = [currentYear - 1, currentYear]
 
 const s5CalendarYears = computed(() => {
@@ -1058,7 +1142,7 @@ const s5FiscalYears = computed(() => {
         const year = Number(monthKey.slice(0, 4))
         const month = Number(monthKey.slice(5, 7))
         if (!Number.isInteger(year) || !Number.isInteger(month)) return null
-        return month >= 7 ? year : year - 1
+        return month >= FISCAL_YEAR_START_MONTH ? year : year - 1
       })
       .filter((year): year is number => year !== null)
   )
@@ -1071,30 +1155,40 @@ const s5FiscalYear = ref<number>(s5FiscalYears.value[s5FiscalYears.value.length 
 
 const monthKey = (year: number, month: number) => `${year}-${String(month).padStart(2, '0')}`
 
+const toFiscalYear = (monthKeyValue: string) => {
+  const year = Number(monthKeyValue.slice(0, 4))
+  const month = Number(monthKeyValue.slice(5, 7))
+  if (!Number.isInteger(year) || !Number.isInteger(month)) return null
+  return month >= FISCAL_YEAR_START_MONTH ? year : year - 1
+}
+
+const buildFiscalMonthKeys = (fiscalYear: number) => {
+  const startMonths = Array.from({ length: 6 }, (_, index) => FISCAL_YEAR_START_MONTH + index)
+  const nextYearMonths = Array.from({ length: FISCAL_YEAR_START_MONTH - 1 }, (_, index) => index + 1)
+  return [
+    ...startMonths.map((month) => monthKey(fiscalYear, month)),
+    ...nextYearMonths.map((month) => monthKey(fiscalYear + 1, month))
+  ]
+}
+
+const buildDisplayMonthKeys = (mode: 'calendar' | 'fiscal', calendarYear: number, fiscalYear: number) => {
+  if (mode === 'calendar') {
+    return Array.from({ length: 12 }, (_, index) => monthKey(calendarYear, index + 1))
+  }
+  return buildFiscalMonthKeys(fiscalYear)
+}
+
 const formatFiscalTermLabel = (fiscalYear: number) => {
   const termNumber = fiscalYear - FISCAL_TERM_START_YEAR + 1
-  if (termNumber <= 0) return `${fiscalYear}年度（${fiscalYear}年7月〜${fiscalYear + 1}年6月）`
-  return `${termNumber}期目（${fiscalYear}年7月-${fiscalYear + 1}年6月）`
+  const endMonth = FISCAL_YEAR_START_MONTH - 1
+  if (termNumber <= 0) {
+    return `${fiscalYear}年度（${fiscalYear}年${FISCAL_YEAR_START_MONTH}月〜${fiscalYear + 1}年${endMonth}月）`
+  }
+  return `${termNumber}期目（${fiscalYear}年${FISCAL_YEAR_START_MONTH}月-${fiscalYear + 1}年${endMonth}月）`
 }
 
 const s5MonthKeys = computed(() => {
-  if (s5DisplayMode.value === 'calendar') {
-    return Array.from({ length: 12 }, (_, index) => monthKey(s5CalendarYear.value, index + 1))
-  }
-  return [
-    monthKey(s5FiscalYear.value, 7),
-    monthKey(s5FiscalYear.value, 8),
-    monthKey(s5FiscalYear.value, 9),
-    monthKey(s5FiscalYear.value, 10),
-    monthKey(s5FiscalYear.value, 11),
-    monthKey(s5FiscalYear.value, 12),
-    monthKey(s5FiscalYear.value + 1, 1),
-    monthKey(s5FiscalYear.value + 1, 2),
-    monthKey(s5FiscalYear.value + 1, 3),
-    monthKey(s5FiscalYear.value + 1, 4),
-    monthKey(s5FiscalYear.value + 1, 5),
-    monthKey(s5FiscalYear.value + 1, 6)
-  ]
+  return buildDisplayMonthKeys(s5DisplayMode.value, s5CalendarYear.value, s5FiscalYear.value)
 })
 const activeWorkProjectId = ref<number | null>(null)
 const pendingS5ProjectId = ref<number | null>(null)
@@ -1231,7 +1325,102 @@ const rebuildWorkRowsByProject = () => {
 activeWorkProjectId.value = pickDefaultWorkProjectId(s5Projects.value)
 rebuildWorkRowsByProject()
 
-const businessDaysRow = reactive<Record<string, unknown>>({ item: '営業日数', '2025-08': 22, '2025-09': 20, '2025-10': 22, '2025-11': 20, '2025-12': 20, '2026-01': 18, '2026-02': 20 })
+const s6DataMonthKeys = computed(() => [...new Set(props.monthly_business_days.map((row) => row.work_month))].sort())
+const s6DisplayMode = ref<S6DisplayMode>('calendar')
+
+const s6CalendarYears = computed(() => {
+  const years = new Set<number>(
+    s6DataMonthKeys.value.map((monthKeyValue) => Number(monthKeyValue.slice(0, 4))).filter((year) => Number.isInteger(year))
+  )
+  fallbackYears.forEach((year) => years.add(year))
+  return [...years].sort((a, b) => a - b)
+})
+
+const s6FiscalYears = computed(() => {
+  const years = new Set<number>(
+    s6DataMonthKeys.value
+      .map((monthKeyValue) => toFiscalYear(monthKeyValue))
+      .filter((year): year is number => year !== null)
+  )
+  fallbackYears.forEach((year) => years.add(year))
+  return [...years].sort((a, b) => a - b)
+})
+
+const s6CalendarYear = ref<number>(s6CalendarYears.value[s6CalendarYears.value.length - 1] ?? currentYear)
+const s6FiscalYear = ref<number>(s6FiscalYears.value[s6FiscalYears.value.length - 1] ?? currentFiscalYear)
+const s6MonthKeys = computed(() => buildDisplayMonthKeys(s6DisplayMode.value, s6CalendarYear.value, s6FiscalYear.value))
+const s6State = reactive({
+  processing: false
+})
+const s6Edited = ref(false)
+const s6DirtyCellKeys = reactive(new Set<string>())
+const pendingS6DisplayChange = ref<S6DisplaySelection | null>(null)
+const s6GridApi = ref<GridApi | null>(null)
+
+const businessDaysRow = reactive<Record<string, unknown>>({ item: '営業日数' })
+
+const normalizeS6BusinessDaysValue = (value: unknown): number | null => {
+  if (value === null || value === undefined || value === '') return null
+  const parsed = Number.parseInt(String(value), 10)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+const s6PersistedValuesByMonth = computed(() => {
+  return new Map(
+    props.monthly_business_days.map((row) => {
+      const parsed = normalizeS6BusinessDaysValue(row.business_days)
+      return [row.work_month, parsed] as const
+    })
+  )
+})
+
+const s6PersistedValueFor = (monthKeyValue: string): number | null => {
+  return s6PersistedValuesByMonth.value.get(monthKeyValue) ?? null
+}
+
+const clearS6DirtyCells = () => {
+  s6DirtyCellKeys.clear()
+  s6Edited.value = false
+  s6GridApi.value?.refreshCells({ force: true })
+}
+
+const syncS6DirtyCell = (monthKeyValue: string) => {
+  const current = normalizeS6BusinessDaysValue(businessDaysRow[monthKeyValue])
+  const persisted = s6PersistedValueFor(monthKeyValue)
+  if (current === persisted) {
+    s6DirtyCellKeys.delete(monthKeyValue)
+  } else {
+    s6DirtyCellKeys.add(monthKeyValue)
+  }
+  s6Edited.value = s6DirtyCellKeys.size > 0
+}
+
+const isS6DirtyCell = (monthKeyValue: string) => {
+  return s6DirtyCellKeys.has(monthKeyValue)
+}
+
+const rebuildS6BusinessDaysRow = () => {
+  Object.keys(businessDaysRow).forEach((key) => {
+    if (key !== 'item') {
+      delete businessDaysRow[key]
+    }
+  })
+
+  s6MonthKeys.value.forEach((monthKeyValue) => {
+    businessDaysRow[monthKeyValue] = s6PersistedValueFor(monthKeyValue)
+  })
+
+  clearS6DirtyCells()
+}
+
+const s6BusinessDaysForMonth = (monthKeyValue: string) => {
+  if (Object.prototype.hasOwnProperty.call(businessDaysRow, monthKeyValue)) {
+    return normalizeS6BusinessDaysValue(businessDaysRow[monthKeyValue]) ?? 1
+  }
+  return s6PersistedValueFor(monthKeyValue) ?? 1
+}
+
+rebuildS6BusinessDaysRow()
 
 type CostPart = 'salary' | 'legal' | 'welfare' | 'bonus' | 'internal'
 const editableCostParts: CostPart[] = ['salary', 'legal', 'welfare', 'bonus']
@@ -1244,7 +1433,7 @@ const recalcInternalCost = (row: Record<string, unknown>) => {
     const legal = Number(row[costField(m.key, 'legal')]) || 0
     const welfare = Number(row[costField(m.key, 'welfare')]) || 0
     const bonus = Number(row[costField(m.key, 'bonus')]) || 0
-    const days = Number(businessDaysRow[m.key]) || 1
+    const days = s6BusinessDaysForMonth(m.key)
     row[costField(m.key, 'internal')] = Math.round((salary + legal + welfare + bonus) / days / 8)
   })
 }
@@ -1287,14 +1476,6 @@ const adjustments = reactive<Adjustment[]>([
 
 const defaultColDef: ColDef = { editable: true, resizable: true }
 const s4DefaultColDef: ColDef = { editable: false, resizable: true }
-const makeMonthCols = (formatter?: (v: number) => string): ColDef[] => visibleMonths.value.map((m) => ({
-  headerName: m.label,
-  field: m.key,
-  editable: true,
-  valueFormatter: formatter
-    ? (params: ValueFormatterParams) => formatter(Number(params.value))
-    : undefined
-}))
 
 const accountingColDefs = computed<ColDef[]>(() => [
   { field: 'item', headerName: '項目', pinned: 'left', editable: false, minWidth: 200 },
@@ -1364,9 +1545,33 @@ const workColDefs = computed<Array<ColDef | ColGroupDef>>(() => [
   }))
 ])
 
+const createS6BusinessDayColumn = (monthKeyValue: string): ColDef => ({
+  field: monthKeyValue,
+  headerName: formatMonthLabel(monthKeyValue),
+  editable: true,
+  minWidth: 108,
+  cellEditor: 'agNumberCellEditor',
+  cellEditorParams: {
+    min: 1,
+    max: 31,
+    step: 1,
+    showStepperButtons: true
+  },
+  valueSetter: (params: ValueSetterParams<Record<string, unknown>>) => {
+    if (!params.data) return false
+    params.data[monthKeyValue] = normalizeS6BusinessDaysValue(params.newValue)
+    return true
+  },
+  valueFormatter: (params: ValueFormatterParams<Record<string, unknown>>) => {
+    const value = normalizeS6BusinessDaysValue(params.value)
+    return value === null ? '—' : `${value}`
+  },
+  cellClass: () => (isS6DirtyCell(monthKeyValue) ? 's6-cell-dirty' : '')
+})
+
 const businessDayColDefs = computed<ColDef[]>(() => [
   { field: 'item', headerName: '項目', pinned: 'left', editable: false, minWidth: 140 },
-  ...makeMonthCols((v) => `${v}`)
+  ...s6MonthKeys.value.map((monthKeyValue) => createS6BusinessDayColumn(monthKeyValue))
 ])
 
 const createCostMatrixColDefs = (salaryLabel: string, bonusLabel: string): Array<ColDef | ColGroupDef> => [
@@ -1432,7 +1637,7 @@ const toast = reactive({ show: false, type: 'success' as 'success' | 'error', me
 
 const errors = reactive<Record<string, string>>({})
 const dirty = ref(false)
-const hasUnsavedChanges = computed(() => dirty.value || s5Edited.value)
+const hasUnsavedChanges = computed(() => dirty.value || s5Edited.value || s6Edited.value)
 let skipDirtyTracking = true
 let suppressBeforeVisitGuard = false
 
@@ -2101,6 +2306,10 @@ function onWorkGridReady(event: GridReadyEvent) {
   workGridApi.value = event.api
 }
 
+function onS6GridReady(event: GridReadyEvent) {
+  s6GridApi.value = event.api
+}
+
 function applyS5ProjectSwitch(projectId: number) {
   isSwitchingS5Project.value = true
   activeWorkProjectId.value = projectId
@@ -2234,6 +2443,105 @@ function resetS5DraftWithConfirm() {
   discardS5DraftAndRun(() => {})
 }
 
+function applyS6DisplayChange(selection: S6DisplaySelection) {
+  s6DisplayMode.value = selection.mode
+  s6CalendarYear.value = selection.calendarYear
+  s6FiscalYear.value = selection.fiscalYear
+}
+
+function promptS6UnsavedAction(): S6UnsavedAction {
+  const answer = window.prompt(
+    'S6に未保存の変更があります。\n1: 保存して切替\n2: 破棄して切替\n3: キャンセル',
+    '3'
+  )
+  if (answer === '1') return 'save'
+  if (answer === '2') return 'discard'
+  return 'cancel'
+}
+
+function discardS6DraftAndRun(action: () => void) {
+  rebuildS6BusinessDaysRow()
+  clearErrors('s6')
+  pendingS6DisplayChange.value = null
+  action()
+}
+
+function confirmS6UnsavedAndRun(action: () => void, onSave: () => void) {
+  if (!s6Edited.value) {
+    action()
+    return
+  }
+  if (s6State.processing) return
+
+  const decision = promptS6UnsavedAction()
+  if (decision === 'save') {
+    onSave()
+    return
+  }
+  if (decision === 'discard') {
+    discardS6DraftAndRun(action)
+  }
+}
+
+function attemptChangeS6Display(selection: S6DisplaySelection) {
+  if (
+    selection.mode === s6DisplayMode.value &&
+    selection.calendarYear === s6CalendarYear.value &&
+    selection.fiscalYear === s6FiscalYear.value
+  ) {
+    return
+  }
+
+  confirmS6UnsavedAndRun(
+    () => {
+      pendingS6DisplayChange.value = null
+      applyS6DisplayChange(selection)
+    },
+    () => {
+      pendingS6DisplayChange.value = selection
+      saveSection('s6')
+    }
+  )
+}
+
+function onS6DisplayModeChanged(value: string) {
+  const mode: S6DisplayMode = value === 'fiscal' ? 'fiscal' : 'calendar'
+  attemptChangeS6Display({
+    mode,
+    calendarYear: s6CalendarYear.value,
+    fiscalYear: s6FiscalYear.value
+  })
+}
+
+function onS6CalendarYearChanged(value: string) {
+  const year = Number(value)
+  if (!Number.isInteger(year)) return
+  attemptChangeS6Display({
+    mode: 'calendar',
+    calendarYear: year,
+    fiscalYear: s6FiscalYear.value
+  })
+}
+
+function onS6FiscalYearChanged(value: string) {
+  const year = Number(value)
+  if (!Number.isInteger(year)) return
+  attemptChangeS6Display({
+    mode: 'fiscal',
+    calendarYear: s6CalendarYear.value,
+    fiscalYear: year
+  })
+}
+
+function resetS6DraftWithConfirm() {
+  if (!s6Edited.value || s6State.processing) return
+
+  const confirmed = window.confirm('未保存の変更を破棄して元の状態に戻します。よろしいですか？\nこの操作は保存されません。')
+  if (!confirmed) return
+
+  discardS6DraftAndRun(() => {})
+}
+
 function onWorkCellChanged(event: {
   colDef?: { field?: string }
   data?: Record<string, unknown>
@@ -2268,6 +2576,26 @@ function onWorkCellChanged(event: {
   }
 
   markDirty()
+}
+
+function onS6CellChanged(event: {
+  colDef?: { field?: string }
+  data?: Record<string, unknown>
+  api?: { refreshCells?: (params?: { rowNodes?: unknown[]; columns?: string[]; force?: boolean }) => void }
+  node?: unknown
+}) {
+  const field = event.colDef?.field
+  const row = event.data
+  if (!field || !row || !s6MonthKeys.value.includes(field)) return
+
+  row[field] = normalizeS6BusinessDaysValue(row[field])
+  syncS6DirtyCell(field)
+
+  event.api?.refreshCells?.({
+    rowNodes: event.node ? [event.node] : undefined,
+    columns: [field],
+    force: true
+  })
 }
 
 function onCostMatrixChanged(event: { data?: Record<string, unknown>; api?: { refreshCells?: (params?: unknown) => void }; node?: unknown }) {
@@ -2410,6 +2738,22 @@ function validateSection(section: string) {
     }
     return true
   }
+  if (section === 's6') {
+    const messages: string[] = []
+    s6MonthKeys.value.forEach((monthKeyValue) => {
+      const value = normalizeS6BusinessDaysValue(businessDaysRow[monthKeyValue])
+      if (value === null) return
+      if (!Number.isInteger(value) || value < 1 || value > 31) {
+        messages.push(`${formatMonthLabel(monthKeyValue)} 営業日数は1〜31の整数で入力してください`)
+      }
+    })
+
+    if (messages.length > 0) {
+      errors.s6 = messages.slice(0, 5).join('\n')
+      return false
+    }
+    return true
+  }
   if (section === 's7') {
     const invalid = memberCostRows.some((row) =>
       visibleMonths.value.some((m) =>
@@ -2457,6 +2801,10 @@ function saveSection(section: string) {
   if (!ok) return
   if (section === 's5') {
     void submitS5()
+    return
+  }
+  if (section === 's6') {
+    void submitS6()
     return
   }
   if (section === 's10') {
@@ -2527,6 +2875,44 @@ function submitS5() {
   })
 }
 
+function submitS6() {
+  const entries = s6MonthKeys.value.map((monthKeyValue) => ({
+    work_month: monthKeyValue,
+    business_days: normalizeS6BusinessDaysValue(businessDaysRow[monthKeyValue])
+  }))
+
+  s6State.processing = true
+  suppressBeforeVisitGuard = true
+  clearErrors('s6')
+
+  router.post('/monthly_business_days/bulk_upsert', {
+    entries
+  }, {
+    preserveScroll: true,
+    preserveState: true,
+    onSuccess: () => {
+      clearErrors('s6')
+      clearS6DirtyCells()
+
+      if (pendingS6DisplayChange.value) {
+        const nextDisplay = pendingS6DisplayChange.value
+        pendingS6DisplayChange.value = null
+        applyS6DisplayChange(nextDisplay)
+      }
+    },
+    onError: (serverErrors) => {
+      errors.s6 = firstInertiaError(serverErrors, 'entries') ||
+        firstInertiaError(serverErrors, 'business_days') ||
+        firstInertiaError(serverErrors, 'work_month') ||
+        'S6を保存できませんでした。'
+    },
+    onFinish: () => {
+      s6State.processing = false
+      suppressBeforeVisitGuard = false
+    }
+  })
+}
+
 const beforeUnload = (event: BeforeUnloadEvent) => {
   if (!hasUnsavedChanges.value) return
   event.preventDefault()
@@ -2584,6 +2970,20 @@ watch(s5FiscalYears, (years) => {
   }
 }, { immediate: true })
 
+watch(s6CalendarYears, (years) => {
+  if (years.length === 0) return
+  if (!years.includes(s6CalendarYear.value)) {
+    s6CalendarYear.value = years[years.length - 1]
+  }
+}, { immediate: true })
+
+watch(s6FiscalYears, (years) => {
+  if (years.length === 0) return
+  if (!years.includes(s6FiscalYear.value)) {
+    s6FiscalYear.value = years[years.length - 1]
+  }
+}, { immediate: true })
+
 watch(
   () => props.projects,
   (nextProjects) => {
@@ -2636,6 +3036,19 @@ watch(
 watch([s5DisplayMode, s5CalendarYear, s5FiscalYear], () => {
   rebuildWorkRowsByProject()
 })
+
+watch([s6DisplayMode, s6CalendarYear, s6FiscalYear], () => {
+  rebuildS6BusinessDaysRow()
+})
+
+watch(
+  () => props.monthly_business_days,
+  () => {
+    if (s6Edited.value && !s6State.processing) return
+    rebuildS6BusinessDaysRow()
+  },
+  { deep: true }
+)
 
 watch(
   () => props.monthly_accounting_histories,
