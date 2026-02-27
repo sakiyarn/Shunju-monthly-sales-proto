@@ -237,4 +237,102 @@ class MasterControllerTest < ActionDispatch::IntegrationTest
     assert_nil staff_monthly_results.find { |row| row["user_id"] == inactive_member.id }
     assert_nil staff_monthly_results.find { |row| row["user_id"] == active_admin.id }
   end
+
+  test "master includes s8 officer monthly results props for active representatives only" do
+    representative_role = Role.create!(name: "代表", display_order: 1)
+    officer_role = Role.create!(name: "千人将", display_order: 2)
+
+    active_representative = User.create!(
+      name: "S8有効代表",
+      email: "master-s8-active-representative@example.com",
+      password: "password123",
+      password_confirmation: "password123",
+      system_role: "admin",
+      is_active: true,
+      role: representative_role
+    )
+    inactive_representative = User.create!(
+      name: "S8無効代表",
+      email: "master-s8-inactive-representative@example.com",
+      password: "password123",
+      password_confirmation: "password123",
+      system_role: "admin",
+      is_active: false,
+      role: representative_role
+    )
+    active_nonrepresentative_admin = User.create!(
+      name: "S8非代表管理者",
+      email: "master-s8-non-representative-admin@example.com",
+      password: "password123",
+      password_confirmation: "password123",
+      system_role: "admin",
+      is_active: true,
+      role: officer_role
+    )
+    active_member = User.create!(
+      name: "S8メンバー",
+      email: "master-s8-member@example.com",
+      password: "password123",
+      password_confirmation: "password123",
+      system_role: "member",
+      is_active: true,
+      role: officer_role
+    )
+
+    StaffMonthlyResult.create!(
+      user: active_representative,
+      work_month: Date.new(2026, 1, 1),
+      salary: 500_000,
+      legal_welfare: 80_000,
+      welfare: 15_000,
+      bonus: 90_000
+    )
+    StaffMonthlyResult.create!(
+      user: inactive_representative,
+      work_month: Date.new(2026, 1, 1),
+      salary: 500_000,
+      legal_welfare: 80_000,
+      welfare: 15_000,
+      bonus: 90_000
+    )
+    StaffMonthlyResult.create!(
+      user: active_nonrepresentative_admin,
+      work_month: Date.new(2026, 1, 1),
+      salary: 420_000,
+      legal_welfare: 67_000,
+      welfare: 13_000,
+      bonus: 50_000
+    )
+    StaffMonthlyResult.create!(
+      user: active_member,
+      work_month: Date.new(2026, 1, 1),
+      salary: 320_000,
+      legal_welfare: 51_000,
+      welfare: 12_000,
+      bonus: 20_000
+    )
+
+    get master_path, headers: { "X-Inertia" => "true" }
+
+    assert_response :success
+
+    payload = JSON.parse(response.body)
+    officer_monthly_results = payload.dig("props", "officer_monthly_results")
+    assert officer_monthly_results.present?
+
+    response_row = officer_monthly_results.find do |row|
+      row["user_id"] == active_representative.id && row["work_month"] == "2026-01"
+    end
+
+    assert_not_nil response_row
+    assert_equal 500_000, response_row["salary"]
+    assert_equal 80_000, response_row["legal_welfare"]
+    assert_equal 15_000, response_row["welfare"]
+    assert_equal 90_000, response_row["bonus"]
+    assert_match(/\A\d{4}-\d{2}\z/, response_row["work_month"])
+
+    assert_nil officer_monthly_results.find { |row| row["user_id"] == inactive_representative.id }
+    assert_nil officer_monthly_results.find { |row| row["user_id"] == active_nonrepresentative_admin.id }
+    assert_nil officer_monthly_results.find { |row| row["user_id"] == active_member.id }
+  end
 end

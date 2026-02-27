@@ -590,13 +590,86 @@
       </div>
     </section>
 
-    <section class="card">
-      <h2 class="card-title">🏢 セクション8: 役員原価データ（月次）</h2>
-      <div class="ag-theme-quartz h-[320px] w-full">
-        <AgGridVue class="h-full w-full" :rowData="officerCostRows" :columnDefs="officerCostMatrixColDefs" :defaultColDef="defaultColDef" @cell-value-changed="onCostMatrixChanged" />
+    <section class="card master-s8-card transition-colors duration-200" :class="s8Edited ? 'border-amber-300 bg-amber-50/60' : ''">
+      <div class="master-s8-head">
+        <div class="master-s8-head-main">
+          <h2 class="card-title mb-0">🏢 セクション8: 役員原価データ（月次）</h2>
+          <div class="master-s8-status">
+            <span
+              v-if="s8Edited"
+              class="inline-flex items-center rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900"
+            >
+              未保存
+            </span>
+          </div>
+        </div>
+        <div class="master-s8-head-actions">
+          <p class="master-s8-head-note">操作ミス時は「未保存を破棄」で入力前の状態に戻せます。</p>
+          <button
+            class="master-s8-reset-btn"
+            :disabled="!s8Edited || s8State.processing"
+            @click="resetS8DraftWithConfirm"
+          >
+            未保存を破棄
+          </button>
+        </div>
       </div>
-      <p v-if="errors.s8" class="error-msg">{{ errors.s8 }}</p>
-      <button class="btn-save" @click="saveSection('s8')">保存</button>
+
+      <div class="master-s8-toolbar">
+        <div class="master-s8-pane">
+          <p class="master-s8-pane-label">表示設定</p>
+          <div class="flex flex-wrap items-center gap-2">
+            <label class="text-sm text-slate-700">
+              表示軸
+              <select class="input ml-2 master-s8-axis-select" :value="s8DisplayMode" @change="onS8DisplayModeChanged(($event.target as HTMLSelectElement).value)">
+                <option value="calendar">暦年（1月〜12月）</option>
+                <option value="fiscal">決算年度（7月〜翌6月）</option>
+              </select>
+            </label>
+            <label v-if="s8DisplayMode === 'calendar'" class="text-sm text-slate-700">
+              年
+              <select class="input ml-2 master-s8-year-select" :value="s8CalendarYear" @change="onS8CalendarYearChanged(($event.target as HTMLSelectElement).value)">
+                <option v-for="year in s8CalendarYears" :key="`s8-calendar-${year}`" :value="year">{{ year }}年</option>
+              </select>
+            </label>
+            <label v-else class="text-sm text-slate-700">
+              決算年度
+              <select class="input ml-2 master-s8-year-select" :value="s8FiscalYear" @change="onS8FiscalYearChanged(($event.target as HTMLSelectElement).value)">
+                <option v-for="year in s8FiscalYears" :key="`s8-fiscal-${year}`" :value="year">{{ formatFiscalTermLabel(year) }}</option>
+              </select>
+            </label>
+          </div>
+          <div class="master-s8-shortcuts" aria-label="S8 keyboard shortcuts">
+            <span class="master-s8-shortcut-chip">Enter: 編集開始 / 確定して下へ</span>
+            <span class="master-s8-shortcut-chip">Tab: 右セルへ移動</span>
+            <span class="master-s8-shortcut-chip">矢印キー: セル移動</span>
+          </div>
+          <p class="master-s8-readonly-note">
+            <span class="master-s8-readonly-dot" aria-hidden="true" />
+            社内原価(h)は営業日数を使った自動計算列です（編集不可）。
+          </p>
+        </div>
+      </div>
+
+      <p v-if="errors.s8" class="mb-3 error-msg whitespace-pre-line">{{ errors.s8 }}</p>
+      <p v-if="s8Rows.length === 0" class="mb-3 text-sm text-slate-500">表示対象の代表がありません。</p>
+      <div class="ag-theme-quartz h-[320px] w-full">
+        <AgGridVue
+          class="s8-grid h-full w-full"
+          :rowData="s8Rows"
+          :columnDefs="s8CostMatrixColDefs"
+          :defaultColDef="defaultColDef"
+          :enterNavigatesVertically="false"
+          :enterNavigatesVerticallyAfterEdit="true"
+          @grid-ready="onS8GridReady"
+          @cell-value-changed="onS8CellChanged"
+        />
+      </div>
+      <div class="master-s8-footer">
+        <button class="btn-save cursor-pointer" :disabled="s8State.processing || s8Rows.length === 0" @click="saveSection('s8')">
+          {{ s8Edited ? '保存（未保存あり）' : '保存' }}
+        </button>
+      </div>
     </section>
 
     <section class="card">
@@ -890,6 +963,8 @@ type S6DisplayMode = 'calendar' | 'fiscal'
 type S6UnsavedAction = 'save' | 'discard' | 'cancel'
 type S7DisplayMode = 'calendar' | 'fiscal'
 type S7UnsavedAction = 'save' | 'discard' | 'cancel'
+type S8DisplayMode = 'calendar' | 'fiscal'
+type S8UnsavedAction = 'save' | 'discard' | 'cancel'
 const FISCAL_TERM_START_YEAR = 2022
 const FISCAL_YEAR_START_MONTH = 7
 
@@ -913,6 +988,7 @@ const props = defineProps<{
   billing_work_logs: BillingWorkLogRecord[]
   monthly_business_days: MonthlyBusinessDayRecord[]
   staff_monthly_results: StaffMonthlyResultRecord[]
+  officer_monthly_results: StaffMonthlyResultRecord[]
   monthly_accounting_data: MonthlyAccountingDataRecord[]
   monthly_accounting_histories: MonthlyAccountingHistoryRecord[]
   initialData?: Record<string, unknown>
@@ -958,6 +1034,12 @@ interface S6DisplaySelection {
 
 interface S7DisplaySelection {
   mode: S7DisplayMode
+  calendarYear: number
+  fiscalYear: number
+}
+
+interface S8DisplaySelection {
+  mode: S8DisplayMode
   calendarYear: number
   fiscalYear: number
 }
@@ -1659,31 +1741,6 @@ const recalcInternalCostByMonthKeys = (row: Record<string, unknown>, monthKeys: 
   })
 }
 
-const recalcInternalCost = (row: Record<string, unknown>) => {
-  recalcInternalCostByMonthKeys(row, visibleMonths.value.map((month) => month.key))
-}
-
-const createLegacyCostMatrixRows = (members: string[], salaryBase: number, officerMode = false) => {
-  return members.map((member, memberIndex) => {
-    const row: Record<string, unknown> = { member }
-    visibleMonths.value.forEach((m, monthIndex) => {
-      const salary = salaryBase + memberIndex * (officerMode ? 15000 : 12000) + monthIndex * 4000
-      const legal = Math.round(salary * 0.16)
-      const welfare = 12000 + memberIndex * 1000 + monthIndex * 400
-      const isBonusMonth = m.key.endsWith('-12') || m.key.endsWith('-02')
-      const bonus = isBonusMonth ? 70000 + memberIndex * (officerMode ? 5000 : 3000) : 0
-
-      row[costField(m.key, 'salary')] = salary
-      row[costField(m.key, 'legal')] = legal
-      row[costField(m.key, 'welfare')] = welfare
-      row[costField(m.key, 'bonus')] = bonus
-      row[costField(m.key, 'internal')] = 0
-    })
-    recalcInternalCost(row)
-    return row
-  })
-}
-
 const s7TargetMembers = computed(() => {
   return [...props.users]
     .filter((user) => user.is_active && user.system_role === 'member')
@@ -1731,7 +1788,143 @@ const refreshS7InternalCosts = () => {
 
 rebuildS7Rows()
 
-const officerCostRows = reactive(createLegacyCostMatrixRows(['代表A', '代表B'], 500000, true))
+const s8PartLabelByKey: Record<EditableCostPart, string> = {
+  salary: '役員報酬',
+  legal: '法定福利費',
+  welfare: '福利厚生費',
+  bonus: '役員賞与'
+}
+
+const s8DataMonthKeys = computed(() => [...new Set(props.officer_monthly_results.map((row) => row.work_month))].sort())
+const s8DisplayMode = ref<S8DisplayMode>('calendar')
+
+const s8CalendarYears = computed(() => {
+  const years = new Set<number>(
+    s8DataMonthKeys.value.map((monthKeyValue) => Number(monthKeyValue.slice(0, 4))).filter((year) => Number.isInteger(year))
+  )
+  fallbackYears.forEach((year) => years.add(year))
+  return [...years].sort((a, b) => a - b)
+})
+
+const s8FiscalYears = computed(() => {
+  const years = new Set<number>(
+    s8DataMonthKeys.value
+      .map((monthKeyValue) => toFiscalYear(monthKeyValue))
+      .filter((year): year is number => year !== null)
+  )
+  fallbackYears.forEach((year) => years.add(year))
+  return [...years].sort((a, b) => a - b)
+})
+
+const s8CalendarYear = ref<number>(s8CalendarYears.value[s8CalendarYears.value.length - 1] ?? currentYear)
+const s8FiscalYear = ref<number>(s8FiscalYears.value[s8FiscalYears.value.length - 1] ?? currentFiscalYear)
+const s8MonthKeys = computed(() => buildDisplayMonthKeys(s8DisplayMode.value, s8CalendarYear.value, s8FiscalYear.value))
+const s8Rows = ref<Record<string, unknown>[]>([])
+const s8State = reactive({
+  processing: false,
+  rebuilding: false
+})
+const s8Edited = ref(false)
+const s8DirtyCellKeys = reactive(new Set<string>())
+const pendingS8DisplayChange = ref<S8DisplaySelection | null>(null)
+const s8GridApi = ref<GridApi | null>(null)
+
+const buildS8PersistedValueKey = (userId: number, monthKeyValue: string) => `${userId}:${monthKeyValue}`
+const buildS8DirtyCellKey = (userId: number, monthKeyValue: string, part: EditableCostPart) => `${userId}:${monthKeyValue}:${part}`
+
+const s8PersistedValuesByKey = computed(() => {
+  return new Map(
+    props.officer_monthly_results.map((row) => [
+      buildS8PersistedValueKey(row.user_id, row.work_month),
+      {
+        salary: Number(row.salary) || 0,
+        legal: Number(row.legal_welfare) || 0,
+        welfare: Number(row.welfare) || 0,
+        bonus: Number(row.bonus) || 0
+      }
+    ])
+  )
+})
+
+const s8PersistedValueFor = (userId: number, monthKeyValue: string): S7CostValues => {
+  return s8PersistedValuesByKey.value.get(buildS8PersistedValueKey(userId, monthKeyValue)) ?? {
+    salary: 0,
+    legal: 0,
+    welfare: 0,
+    bonus: 0
+  }
+}
+
+const clearS8DirtyCells = () => {
+  s8DirtyCellKeys.clear()
+  s8Edited.value = false
+  s8GridApi.value?.refreshCells({ force: true })
+}
+
+const syncS8DirtyCell = (userId: number, monthKeyValue: string, part: EditableCostPart, currentValue: number) => {
+  const persisted = s8PersistedValueFor(userId, monthKeyValue)
+  const persistedValue = persisted[part]
+  const dirtyKey = buildS8DirtyCellKey(userId, monthKeyValue, part)
+
+  if (currentValue === persistedValue) {
+    s8DirtyCellKeys.delete(dirtyKey)
+  } else {
+    s8DirtyCellKeys.add(dirtyKey)
+  }
+
+  s8Edited.value = s8DirtyCellKeys.size > 0
+}
+
+const isS8DirtyCell = (userId: number, monthKeyValue: string, part: EditableCostPart) => {
+  return s8DirtyCellKeys.has(buildS8DirtyCellKey(userId, monthKeyValue, part))
+}
+
+const s8TargetOfficers = computed(() => {
+  return [...props.users]
+    .filter((user) => user.is_active && user.role_name === '代表')
+    .sort((a, b) => {
+      if (a.display_order !== b.display_order) return a.display_order - b.display_order
+      return a.name.localeCompare(b.name, 'ja')
+    })
+})
+
+const s8OfficerLabel = (user: UserRecord) => {
+  return `${user.name}(${user.role_name || '未設定'})`
+}
+
+const rebuildS8Rows = () => {
+  s8State.rebuilding = true
+  const monthKeys = s8MonthKeys.value
+
+  s8Rows.value = s8TargetOfficers.value.map((user) => {
+    const row: Record<string, unknown> = {
+      userId: user.id,
+      member: s8OfficerLabel(user)
+    }
+    monthKeys.forEach((monthKeyValue) => {
+      const persisted = s8PersistedValueFor(user.id, monthKeyValue)
+      row[costField(monthKeyValue, 'salary')] = persisted.salary
+      row[costField(monthKeyValue, 'legal')] = persisted.legal
+      row[costField(monthKeyValue, 'welfare')] = persisted.welfare
+      row[costField(monthKeyValue, 'bonus')] = persisted.bonus
+      row[costField(monthKeyValue, 'internal')] = 0
+    })
+    recalcInternalCostByMonthKeys(row, monthKeys)
+    return row
+  })
+
+  clearS8DirtyCells()
+  s8State.rebuilding = false
+}
+
+const refreshS8InternalCosts = () => {
+  s8Rows.value.forEach((row) => {
+    recalcInternalCostByMonthKeys(row, s8MonthKeys.value)
+  })
+  s8GridApi.value?.refreshCells({ force: true })
+}
+
+rebuildS8Rows()
 
 const expenses = reactive<Expense[]>([
   { id: 'e1', month: '2025-11', name: 'Kaigi on Rails 参加費', amount: 100000, projectIds: ['p001', 'p002'] },
@@ -1904,45 +2097,54 @@ const s7CostMatrixColDefs = computed<Array<ColDef | ColGroupDef>>(() => [
   }))
 ])
 
-const createCostMatrixColDefs = (salaryLabel: string, bonusLabel: string): Array<ColDef | ColGroupDef> => [
+const createS8EditableCostColumn = (monthKeyValue: string, part: EditableCostPart, label: string): ColDef => ({
+  field: costField(monthKeyValue, part),
+  headerName: label,
+  editable: true,
+  minWidth: part === 'bonus' ? 118 : 108,
+  width: part === 'bonus' ? 128 : 112,
+  maxWidth: part === 'bonus' ? 140 : 122,
+  cellEditor: 'agNumberCellEditor',
+  cellEditorParams: {
+    min: 0,
+    step: s7StepByPart[part],
+    showStepperButtons: true
+  },
+  valueSetter: (params: ValueSetterParams<Record<string, unknown>>) => {
+    if (!params.data) return false
+    params.data[costField(monthKeyValue, part)] = normalizeS7Amount(params.newValue)
+    return true
+  },
+  valueFormatter: (params: ValueFormatterParams<Record<string, unknown>>) => {
+    return formatYen(normalizeS7Amount(params.value))
+  },
+  cellClass: (params: CellClassParams<Record<string, unknown>>) => {
+    if (!params.data) return ''
+    const userId = Number(params.data.userId)
+    if (!Number.isInteger(userId)) return ''
+    return isS8DirtyCell(userId, monthKeyValue, part) ? 's8-cell-dirty' : ''
+  }
+})
+
+const s8CostMatrixColDefs = computed<Array<ColDef | ColGroupDef>>(() => [
   {
     field: 'member',
     headerName: 'スタッフ',
     pinned: 'left',
     editable: false,
-    minWidth: 170,
+    minWidth: 190,
     cellStyle: { fontWeight: '700', background: '#f8fafc' }
   },
-  ...visibleMonths.value.map((m) => ({
-    headerName: `${m.month}月`,
+  ...s8MonthKeys.value.map((monthKeyValue) => ({
+    headerName: formatMonthLabel(monthKeyValue),
     marryChildren: true,
     children: [
+      createS8EditableCostColumn(monthKeyValue, 'salary', '役員報酬'),
+      createS8EditableCostColumn(monthKeyValue, 'legal', '法定福利費'),
+      createS8EditableCostColumn(monthKeyValue, 'welfare', '福利厚生費'),
+      createS8EditableCostColumn(monthKeyValue, 'bonus', '役員賞与'),
       {
-        field: costField(m.key, 'salary'),
-        headerName: salaryLabel,
-        minWidth: 120,
-        valueFormatter: (params: ValueFormatterParams) => formatYen(Number(params.value) || 0)
-      },
-      {
-        field: costField(m.key, 'legal'),
-        headerName: '法定福利費',
-        minWidth: 120,
-        valueFormatter: (params: ValueFormatterParams) => formatYen(Number(params.value) || 0)
-      },
-      {
-        field: costField(m.key, 'welfare'),
-        headerName: '福利厚生費',
-        minWidth: 120,
-        valueFormatter: (params: ValueFormatterParams) => formatYen(Number(params.value) || 0)
-      },
-      {
-        field: costField(m.key, 'bonus'),
-        headerName: bonusLabel,
-        minWidth: 110,
-        valueFormatter: (params: ValueFormatterParams) => formatYen(Number(params.value) || 0)
-      },
-      {
-        field: costField(m.key, 'internal'),
+        field: costField(monthKeyValue, 'internal'),
         headerName: '社内原価(h)',
         headerTooltip: '営業日数を使った自動計算列（編集不可）',
         headerClass: 'cost-readonly-header',
@@ -1955,9 +2157,7 @@ const createCostMatrixColDefs = (salaryLabel: string, bonusLabel: string): Array
       }
     ]
   }))
-]
-
-const officerCostMatrixColDefs = computed(() => createCostMatrixColDefs('役員報酬', '役員賞与'))
+])
 
 const csvInput = ref<HTMLInputElement | null>(null)
 const s4State = reactive({
@@ -1970,7 +2170,7 @@ const toast = reactive({ show: false, type: 'success' as 'success' | 'error', me
 
 const errors = reactive<Record<string, string>>({})
 const dirty = ref(false)
-const hasUnsavedChanges = computed(() => dirty.value || s5Edited.value || s6Edited.value || s7Edited.value)
+const hasUnsavedChanges = computed(() => dirty.value || s5Edited.value || s6Edited.value || s7Edited.value || s8Edited.value)
 let skipDirtyTracking = true
 let suppressBeforeVisitGuard = false
 
@@ -2647,6 +2847,10 @@ function onS7GridReady(event: GridReadyEvent) {
   s7GridApi.value = event.api
 }
 
+function onS8GridReady(event: GridReadyEvent) {
+  s8GridApi.value = event.api
+}
+
 function applyS5ProjectSwitch(projectId: number) {
   isSwitchingS5Project.value = true
   activeWorkProjectId.value = projectId
@@ -2978,6 +3182,105 @@ function resetS7DraftWithConfirm() {
   discardS7DraftAndRun(() => {})
 }
 
+function applyS8DisplayChange(selection: S8DisplaySelection) {
+  s8DisplayMode.value = selection.mode
+  s8CalendarYear.value = selection.calendarYear
+  s8FiscalYear.value = selection.fiscalYear
+}
+
+function promptS8UnsavedAction(): S8UnsavedAction {
+  const answer = window.prompt(
+    'S8に未保存の変更があります。\n1: 保存して切替\n2: 破棄して切替\n3: キャンセル',
+    '3'
+  )
+  if (answer === '1') return 'save'
+  if (answer === '2') return 'discard'
+  return 'cancel'
+}
+
+function discardS8DraftAndRun(action: () => void) {
+  rebuildS8Rows()
+  clearErrors('s8')
+  pendingS8DisplayChange.value = null
+  action()
+}
+
+function confirmS8UnsavedAndRun(action: () => void, onSave: () => void) {
+  if (!s8Edited.value) {
+    action()
+    return
+  }
+  if (s8State.processing) return
+
+  const decision = promptS8UnsavedAction()
+  if (decision === 'save') {
+    onSave()
+    return
+  }
+  if (decision === 'discard') {
+    discardS8DraftAndRun(action)
+  }
+}
+
+function attemptChangeS8Display(selection: S8DisplaySelection) {
+  if (
+    selection.mode === s8DisplayMode.value &&
+    selection.calendarYear === s8CalendarYear.value &&
+    selection.fiscalYear === s8FiscalYear.value
+  ) {
+    return
+  }
+
+  confirmS8UnsavedAndRun(
+    () => {
+      pendingS8DisplayChange.value = null
+      applyS8DisplayChange(selection)
+    },
+    () => {
+      pendingS8DisplayChange.value = selection
+      saveSection('s8')
+    }
+  )
+}
+
+function onS8DisplayModeChanged(value: string) {
+  const mode: S8DisplayMode = value === 'fiscal' ? 'fiscal' : 'calendar'
+  attemptChangeS8Display({
+    mode,
+    calendarYear: s8CalendarYear.value,
+    fiscalYear: s8FiscalYear.value
+  })
+}
+
+function onS8CalendarYearChanged(value: string) {
+  const year = Number(value)
+  if (!Number.isInteger(year)) return
+  attemptChangeS8Display({
+    mode: 'calendar',
+    calendarYear: year,
+    fiscalYear: s8FiscalYear.value
+  })
+}
+
+function onS8FiscalYearChanged(value: string) {
+  const year = Number(value)
+  if (!Number.isInteger(year)) return
+  attemptChangeS8Display({
+    mode: 'fiscal',
+    calendarYear: s8CalendarYear.value,
+    fiscalYear: year
+  })
+}
+
+function resetS8DraftWithConfirm() {
+  if (!s8Edited.value || s8State.processing) return
+
+  const confirmed = window.confirm('未保存の変更を破棄して元の状態に戻します。よろしいですか？\nこの操作は保存されません。')
+  if (!confirmed) return
+
+  discardS8DraftAndRun(() => {})
+}
+
 function onWorkCellChanged(event: {
   colDef?: { field?: string }
   data?: Record<string, unknown>
@@ -3034,6 +3337,7 @@ function onS6CellChanged(event: {
   })
 
   refreshS7InternalCosts()
+  refreshS8InternalCosts()
 }
 
 function onS7CellChanged(event: {
@@ -3069,13 +3373,36 @@ function onS7CellChanged(event: {
   markDirty()
 }
 
-function onCostMatrixChanged(event: { data?: Record<string, unknown>; api?: { refreshCells?: (params?: unknown) => void }; node?: unknown }) {
-  if (!event.data) {
-    markDirty()
-    return
-  }
-  recalcInternalCost(event.data)
-  event.api?.refreshCells?.({ rowNodes: event.node ? [event.node] : undefined, force: true })
+function onS8CellChanged(event: {
+  colDef?: { field?: string }
+  data?: Record<string, unknown>
+  api?: { refreshCells?: (params?: { rowNodes?: unknown[]; columns?: string[]; force?: boolean }) => void }
+  node?: unknown
+}) {
+  if (s8State.rebuilding) return
+
+  const field = event.colDef?.field
+  const row = event.data
+  if (!field || !row) return
+
+  const parsed = parseS7EditableField(field)
+  if (!parsed || !s8MonthKeys.value.includes(parsed.monthKey)) return
+
+  const normalized = normalizeS7Amount(row[field])
+  row[field] = normalized
+
+  const userId = Number(row.userId)
+  if (!Number.isInteger(userId)) return
+
+  syncS8DirtyCell(userId, parsed.monthKey, parsed.part, normalized)
+  recalcInternalCostByMonthKeys(row, s8MonthKeys.value)
+
+  event.api?.refreshCells?.({
+    rowNodes: event.node ? [event.node] : undefined,
+    columns: [field, costField(parsed.monthKey, 'internal')],
+    force: true
+  })
+
   markDirty()
 }
 
@@ -3257,13 +3584,35 @@ function validateSection(section: string) {
     return true
   }
   if (section === 's8') {
-    const invalid = officerCostRows.some((row) =>
-      visibleMonths.value.some((m) =>
-        editableCostParts.some((part) => Number.isNaN(Number(row[costField(m.key, part)])))
-      )
-    )
-    if (invalid) errors.s8 = '役員原価データは数値で入力してください。'
-    return !invalid
+    if (s8Rows.value.length === 0) {
+      errors.s8 = '表示対象の代表がありません。'
+      return false
+    }
+
+    const messages: string[] = []
+    s8Rows.value.forEach((row) => {
+      const officer = String(row.member ?? '不明な代表')
+      s8MonthKeys.value.forEach((monthKeyValue) => {
+        const values = s7CostValuesFor(row, monthKeyValue)
+        editableCostParts.forEach((part) => {
+          const value = values[part]
+          if (!Number.isInteger(value) || value < 0) {
+            messages.push(`${officer} ${formatMonthLabel(monthKeyValue)} ${s8PartLabelByKey[part]}は0以上の整数で入力してください`)
+            return
+          }
+          const step = s7StepByPart[part]
+          if (value % step !== 0) {
+            messages.push(`${officer} ${formatMonthLabel(monthKeyValue)} ${s8PartLabelByKey[part]}は${step}円単位で入力してください`)
+          }
+        })
+      })
+    })
+
+    if (messages.length > 0) {
+      errors.s8 = messages.slice(0, 5).join('\n')
+      return false
+    }
+    return true
   }
   if (section === 's9') {
     let ok = true
@@ -3302,6 +3651,10 @@ function saveSection(section: string) {
   }
   if (section === 's7') {
     void submitS7()
+    return
+  }
+  if (section === 's8') {
+    void submitS8()
     return
   }
   if (section === 's10') {
@@ -3464,6 +3817,60 @@ function submitS7() {
   })
 }
 
+function submitS8() {
+  const entries = s8Rows.value.flatMap((row) => {
+    const userId = Number(row.userId)
+    if (!Number.isInteger(userId)) return []
+    return s8MonthKeys.value.map((monthKeyValue) => {
+      const values = s7CostValuesFor(row, monthKeyValue)
+      return {
+        user_id: userId,
+        work_month: monthKeyValue,
+        salary: values.salary,
+        legal_welfare: values.legal,
+        welfare: values.welfare,
+        bonus: values.bonus
+      }
+    })
+  })
+
+  s8State.processing = true
+  suppressBeforeVisitGuard = true
+  clearErrors('s8')
+
+  router.post('/staff_monthly_results/bulk_upsert_officers', {
+    entries
+  }, {
+    preserveScroll: true,
+    preserveState: true,
+    onSuccess: () => {
+      dirty.value = false
+      clearErrors('s8')
+      clearS8DirtyCells()
+
+      if (pendingS8DisplayChange.value) {
+        const nextDisplay = pendingS8DisplayChange.value
+        pendingS8DisplayChange.value = null
+        applyS8DisplayChange(nextDisplay)
+      }
+    },
+    onError: (serverErrors) => {
+      errors.s8 = firstInertiaError(serverErrors, 'entries') ||
+        firstInertiaError(serverErrors, 'user_id') ||
+        firstInertiaError(serverErrors, 'work_month') ||
+        firstInertiaError(serverErrors, 'salary') ||
+        firstInertiaError(serverErrors, 'legal_welfare') ||
+        firstInertiaError(serverErrors, 'welfare') ||
+        firstInertiaError(serverErrors, 'bonus') ||
+        'S8を保存できませんでした。'
+    },
+    onFinish: () => {
+      s8State.processing = false
+      suppressBeforeVisitGuard = false
+    }
+  })
+}
+
 const beforeUnload = (event: BeforeUnloadEvent) => {
   if (!hasUnsavedChanges.value) return
   event.preventDefault()
@@ -3605,10 +4012,15 @@ watch([s5DisplayMode, s5CalendarYear, s5FiscalYear], () => {
 watch([s6DisplayMode, s6CalendarYear, s6FiscalYear], () => {
   rebuildS6BusinessDaysRow()
   refreshS7InternalCosts()
+  refreshS8InternalCosts()
 })
 
 watch([s7DisplayMode, s7CalendarYear, s7FiscalYear], () => {
   rebuildS7Rows()
+})
+
+watch([s8DisplayMode, s8CalendarYear, s8FiscalYear], () => {
+  rebuildS8Rows()
 })
 
 watch(
@@ -3617,6 +4029,7 @@ watch(
     if (s6Edited.value && !s6State.processing) return
     rebuildS6BusinessDaysRow()
     refreshS7InternalCosts()
+    refreshS8InternalCosts()
   },
   { deep: true }
 )
@@ -3626,6 +4039,15 @@ watch(
   () => {
     if (s7Edited.value && !s7State.processing) return
     rebuildS7Rows()
+  },
+  { deep: true }
+)
+
+watch(
+  [() => props.officer_monthly_results, () => props.users],
+  () => {
+    if (s8Edited.value && !s8State.processing) return
+    rebuildS8Rows()
   },
   { deep: true }
 )
@@ -3648,7 +4070,7 @@ watch(
   { immediate: true, deep: true }
 )
 
-watch([users, projects, expenses, adjustments, officerCostRows], () => {
+watch([users, projects, expenses, adjustments], () => {
   if (skipDirtyTracking) return
   markDirty()
 }, { deep: true })

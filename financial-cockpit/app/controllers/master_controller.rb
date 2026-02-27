@@ -10,6 +10,7 @@ class MasterController < InertiaController
       s5_month_keys: s5_month_keys_payload,
       billing_work_logs: billing_work_logs_payload,
       staff_monthly_results: staff_monthly_results_payload,
+      officer_monthly_results: officer_monthly_results_payload,
       monthly_business_days: monthly_business_days_payload,
       monthly_accounting_data: monthly_accounting_data_payload,
       monthly_accounting_histories: monthly_accounting_histories_payload
@@ -122,6 +123,23 @@ class MasterController < InertiaController
     StaffMonthlyResult
       .joins(:user)
       .where(users: { is_active: true, system_role: "member" })
+      .order(:user_id, :work_month)
+      .map do |row|
+        {
+          user_id: row.user_id,
+          work_month: row.work_month.strftime("%Y-%m"),
+          salary: row.salary.to_i,
+          legal_welfare: row.legal_welfare.to_i,
+          welfare: row.welfare.to_i,
+          bonus: row.bonus.to_i
+        }
+      end
+  end
+
+  def officer_monthly_results_payload
+    StaffMonthlyResult
+      .joins(user: :role)
+      .where(users: { is_active: true }, roles: { name: "代表" })
       .order(:user_id, :work_month)
       .map do |row|
         {
