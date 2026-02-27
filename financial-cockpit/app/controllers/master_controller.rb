@@ -13,6 +13,7 @@ class MasterController < InertiaController
       officer_monthly_results: officer_monthly_results_payload,
       monthly_business_days: monthly_business_days_payload,
       directed_expenses: directed_expenses_payload,
+      billing_adjustments: billing_adjustments_payload,
       monthly_accounting_data: monthly_accounting_data_payload,
       monthly_accounting_histories: monthly_accounting_histories_payload
     }
@@ -131,6 +132,24 @@ class MasterController < InertiaController
           description: expense.description.to_s,
           amount: expense.amount.to_i,
           project_ids: expense.directed_expense_assignments.map(&:project_id).uniq.sort
+        }
+      end
+  end
+
+  def billing_adjustments_payload
+    BillingAdjustment
+      .order(applied_month: :desc, id: :desc)
+      .map do |adjustment|
+        {
+          id: adjustment.id,
+          user_id: adjustment.user_id,
+          project_id: adjustment.project_id,
+          original_month: adjustment.original_month&.strftime("%Y-%m"),
+          applied_month: adjustment.applied_month&.strftime("%Y-%m"),
+          adjustment_amount: adjustment.adjustment_amount.to_i,
+          memo: adjustment.memo.to_s,
+          created_at: adjustment.created_at.iso8601,
+          updated_at: adjustment.updated_at.iso8601
         }
       end
   end

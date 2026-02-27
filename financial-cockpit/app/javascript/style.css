@@ -989,6 +989,99 @@ body,
   padding: 0.35rem 0.15rem;
 }
 
+.master-s10-card {
+  border-color: #dbe4ff;
+}
+
+.master-s10-head {
+  align-items: center;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.75rem;
+}
+
+.master-s10-head-note {
+  color: #64748b;
+  font-size: 0.75rem;
+  margin: 0.35rem 0 0;
+}
+
+.master-s10-toolbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.master-s10-list-wrap {
+  border: 1px solid #dbe4ff;
+  border-radius: 0.625rem;
+  height: 360px;
+  overflow: auto;
+}
+
+.master-s10-table {
+  border-collapse: collapse;
+  min-width: 100%;
+  width: 100%;
+}
+
+.master-s10-table th,
+.master-s10-table td {
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 0.85rem;
+  padding: 0.65rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.master-s10-table thead th {
+  background: #f8fbff;
+  color: #334155;
+  font-size: 0.75rem;
+  font-weight: 700;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.master-s10-empty {
+  color: #64748b;
+  font-size: 0.82rem;
+  padding: 1rem 0.75rem;
+  text-align: center;
+}
+
+.master-s10-status-chip {
+  align-items: center;
+  border: 1px solid #cbd5e1;
+  border-radius: 9999px;
+  color: #475569;
+  display: inline-flex;
+  font-size: 0.65rem;
+  font-weight: 700;
+  margin-left: 0.35rem;
+  min-height: 1.4rem;
+  padding: 0 0.45rem;
+}
+
+.master-s10-memo-cell {
+  max-width: 360px;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.master-s10-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.75rem;
+}
+
 .s5-grid .ag-cell.s5-cell-dirty {
   background: #fef3c7;
 }
