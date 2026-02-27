@@ -125,6 +125,33 @@ class MasterControllerTest < ActionDispatch::IntegrationTest
     assert_equal 19, response_row["business_days"]
   end
 
+  test "master includes directed expenses props" do
+    active_project = Project.create!(name: "S9進行案件", is_active: true)
+    closed_project = Project.create!(name: "S9終了案件", is_active: false)
+    expense = DirectedExpense.create!(
+      work_month: Date.new(2026, 2, 1),
+      description: "クラウド費用",
+      amount: 123_000
+    )
+    DirectedExpenseAssignment.create!(directed_expense: expense, project: active_project)
+    DirectedExpenseAssignment.create!(directed_expense: expense, project: closed_project)
+
+    get master_path, headers: { "X-Inertia" => "true" }
+
+    assert_response :success
+
+    payload = JSON.parse(response.body)
+    directed_expenses = payload.dig("props", "directed_expenses")
+    assert directed_expenses.present?
+
+    response_row = directed_expenses.find { |item| item["id"] == expense.id }
+    assert_not_nil response_row
+    assert_equal "2026-02", response_row["work_month"]
+    assert_equal "クラウド費用", response_row["description"]
+    assert_equal 123_000, response_row["amount"]
+    assert_equal [active_project.id, closed_project.id].sort, response_row["project_ids"].sort
+  end
+
   test "master includes s5 month keys and billing work logs props" do
     project = Project.create!(name: "S5案件", is_active: true)
     user = User.create!(

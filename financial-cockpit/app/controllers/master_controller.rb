@@ -12,6 +12,7 @@ class MasterController < InertiaController
       staff_monthly_results: staff_monthly_results_payload,
       officer_monthly_results: officer_monthly_results_payload,
       monthly_business_days: monthly_business_days_payload,
+      directed_expenses: directed_expenses_payload,
       monthly_accounting_data: monthly_accounting_data_payload,
       monthly_accounting_histories: monthly_accounting_histories_payload
     }
@@ -115,6 +116,21 @@ class MasterController < InertiaController
         {
           work_month: row.work_month.strftime("%Y-%m"),
           business_days: row.business_days
+        }
+      end
+  end
+
+  def directed_expenses_payload
+    DirectedExpense
+      .includes(:directed_expense_assignments)
+      .order(work_month: :desc, id: :desc)
+      .map do |expense|
+        {
+          id: expense.id,
+          work_month: expense.work_month.strftime("%Y-%m"),
+          description: expense.description.to_s,
+          amount: expense.amount.to_i,
+          project_ids: expense.directed_expense_assignments.map(&:project_id).uniq.sort
         }
       end
   end

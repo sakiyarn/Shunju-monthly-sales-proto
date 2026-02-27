@@ -672,32 +672,69 @@
       </div>
     </section>
 
-    <section class="card">
-      <h2 class="card-title">🧾 セクション9: 特定経費（経費按分用）</h2>
-      <button class="btn-accent mb-3" @click="addExpense">＋ 経費を追加</button>
-      <div class="space-y-3">
-        <div v-for="(e, idx) in expenses" :key="e.id" class="rounded border border-slate-200 p-3">
-          <div class="grid grid-cols-1 gap-2 md:grid-cols-4">
-            <select v-model="e.month" class="input" :class="errorClass(`s9.${idx}.month`)">
-              <option value="">対象月</option><option v-for="m in visibleMonths" :key="m.key" :value="m.key">{{ m.label }}</option>
-            </select>
-            <input v-model="e.name" class="input" placeholder="経費名" :class="errorClass(`s9.${idx}.name`)" />
-            <input v-model.number="e.amount" type="number" class="input" placeholder="金額" :class="errorClass(`s9.${idx}.amount`)" />
-            <button class="btn-sub" @click="removeExpense(idx)">削除</button>
-          </div>
-          <p class="mt-1 text-xs text-slate-500">{{ formatYen(e.amount) }}</p>
-          <div class="mt-2 flex flex-wrap gap-3 text-xs">
-            <label v-for="p in projects" :key="`${e.id}-${p.id}`" class="inline-flex items-center gap-1">
-              <input type="checkbox" :checked="e.projectIds.includes(p.id)" @change="toggleExpenseProject(e, p.id, ($event.target as HTMLInputElement).checked)" />
-              {{ p.name }}
-            </label>
-          </div>
-          <p v-if="errors[`s9.${idx}.month`]" class="error-msg">{{ errors[`s9.${idx}.month`] }}</p>
-          <p v-if="errors[`s9.${idx}.name`]" class="error-msg">{{ errors[`s9.${idx}.name`] }}</p>
-          <p v-if="errors[`s9.${idx}.amount`]" class="error-msg">{{ errors[`s9.${idx}.amount`] }}</p>
+    <section class="card master-s9-card">
+      <div class="master-s9-head">
+        <div>
+          <h2 class="card-title mb-0">🧾 セクション9: 特定経費（経費按分用）</h2>
+          <p class="master-s9-head-note">暦年フィルタと検索で過去入力を確認できます。編集は行ごとの編集ボタンから行います。</p>
         </div>
+        <button class="btn-accent cursor-pointer" @click="openS9CreateModal">＋ 経費を追加</button>
       </div>
-      <button class="btn-save" @click="saveSection('s9')">保存</button>
+
+      <div class="master-s9-toolbar">
+        <label class="text-sm text-slate-700">
+          年度
+          <select class="input ml-2 min-w-28" :value="s9YearFilter" @change="onS9YearFilterChanged(($event.target as HTMLSelectElement).value)">
+            <option value="all">すべて</option>
+            <option v-for="year in s9YearOptions" :key="`s9-year-${year}`" :value="String(year)">{{ year }}年</option>
+          </select>
+        </label>
+        <label class="text-sm text-slate-700">
+          検索
+          <input v-model.trim="s9SearchQuery" class="input ml-2 min-w-64" placeholder="経費名 / 案件名で検索" />
+        </label>
+      </div>
+
+      <p v-if="s9ServerError" class="mb-3 error-msg">{{ s9ServerError }}</p>
+
+      <div class="master-s9-list-wrap">
+        <table class="master-s9-table">
+          <thead>
+            <tr>
+              <th>対象月</th>
+              <th>経費名</th>
+              <th class="text-right">金額</th>
+              <th>按分案件</th>
+              <th class="text-right">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="expense in s9FilteredExpenses" :key="expense.id">
+              <td>{{ formatMonthLabel(expense.work_month) }}</td>
+              <td class="font-semibold text-slate-900">{{ expense.description }}</td>
+              <td class="text-right font-semibold text-slate-900">{{ formatYen(expense.amount) }}</td>
+              <td>
+                <div class="master-s9-tags">
+                  <span
+                    v-for="project in expense.projects"
+                    :key="`s9-project-${expense.id}-${project.id}`"
+                    class="master-s9-tag"
+                    :class="project.is_active ? 'master-s9-tag-active' : 'master-s9-tag-closed'"
+                  >
+                    {{ project.name }}
+                  </span>
+                </div>
+              </td>
+              <td class="text-right">
+                <button class="btn-sub cursor-pointer" @click="openS9EditModal(expense)">編集</button>
+              </td>
+            </tr>
+            <tr v-if="s9FilteredExpenses.length === 0">
+              <td colspan="5" class="master-s9-empty">条件に一致する経費データはありません。</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </section>
 
     <section class="card">
@@ -756,6 +793,79 @@
           <button class="btn-sub" :disabled="s3PriceModal.processing" @click="closeAssignmentPriceModal">キャンセル</button>
           <button class="btn-accent" :disabled="s3PriceModal.processing" @click="saveAssignmentPriceModal">
             {{ s3PriceModal.processing ? '保存中...' : '保存' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="s9Modal.open" class="fixed inset-0 z-50 grid place-items-center bg-black/60">
+      <div class="w-full max-w-2xl rounded-lg border border-slate-200 bg-card p-4">
+        <h3 class="mb-1 text-lg font-semibold">{{ s9Modal.mode === 'create' ? '特定経費を追加' : '特定経費を編集' }}</h3>
+        <p class="mb-3 text-xs text-slate-600">編集ボタン経由でのみ更新できます。終了案件は表示専用で保持されます。</p>
+
+        <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <label class="text-sm text-slate-700">
+            対象月
+            <select v-model="s9Modal.form.work_month" class="input mt-1 w-full" :class="errorClass('s9_modal.work_month')">
+              <option value="">対象月を選択</option>
+              <option v-for="option in s9MonthOptions" :key="`s9-modal-month-${option.key}`" :value="option.key">{{ option.label }}</option>
+            </select>
+          </label>
+          <label class="text-sm text-slate-700 md:col-span-2">
+            経費名
+            <input v-model.trim="s9Modal.form.description" class="input mt-1 w-full" placeholder="例: AWS利用料" :class="errorClass('s9_modal.description')" />
+          </label>
+          <label class="text-sm text-slate-700">
+            金額（円）
+            <input v-model.number="s9Modal.form.amount" type="number" min="0" step="1" class="input mt-1 w-full" :class="errorClass('s9_modal.amount')" />
+          </label>
+          <div class="md:col-span-2">
+            <p class="text-xs text-slate-500">表示: {{ formatYen(Number(s9Modal.form.amount) || 0) }}</p>
+          </div>
+        </div>
+
+        <div class="mt-4">
+          <p class="mb-2 text-sm font-semibold text-slate-900">按分案件（進行中のみ選択可）</p>
+          <div class="master-s9-modal-projects">
+            <label v-for="project in s9ActiveProjects" :key="`s9-modal-project-${project.id}`" class="master-s9-modal-project-row">
+              <input
+                type="checkbox"
+                :checked="s9Modal.form.active_project_ids.includes(project.id)"
+                @change="toggleS9ModalProject(project.id, ($event.target as HTMLInputElement).checked)"
+              />
+              <span>{{ project.name }}</span>
+            </label>
+            <p v-if="s9ActiveProjects.length === 0" class="text-xs text-slate-500">進行中案件がありません。</p>
+          </div>
+        </div>
+
+        <div v-if="s9Modal.form.closed_project_ids.length > 0" class="mt-3 rounded border border-amber-200 bg-amber-50 p-2">
+          <p class="text-xs font-semibold text-amber-900">終了案件（保持のみ・編集不可）</p>
+          <div class="mt-1 flex flex-wrap gap-1.5">
+            <span v-for="project in s9ModalClosedProjects" :key="`s9-closed-project-${project.id}`" class="master-s9-tag master-s9-tag-closed">
+              {{ project.name }}
+            </span>
+          </div>
+        </div>
+
+        <p v-if="errors['s9_modal.work_month']" class="error-msg mt-2">{{ errors['s9_modal.work_month'] }}</p>
+        <p v-if="errors['s9_modal.description']" class="error-msg">{{ errors['s9_modal.description'] }}</p>
+        <p v-if="errors['s9_modal.amount']" class="error-msg">{{ errors['s9_modal.amount'] }}</p>
+        <p v-if="errors['s9_modal.project_ids']" class="error-msg">{{ errors['s9_modal.project_ids'] }}</p>
+        <p v-if="errors['s9_modal.base']" class="error-msg">{{ errors['s9_modal.base'] }}</p>
+
+        <div class="mt-4 flex justify-end gap-2">
+          <button class="btn-sub" :disabled="s9Modal.processing" @click="closeS9Modal">キャンセル</button>
+          <button
+            v-if="s9Modal.mode === 'edit'"
+            class="btn-sub text-red-700"
+            :disabled="s9Modal.processing"
+            @click="deleteS9Expense"
+          >
+            削除
+          </button>
+          <button class="btn-accent" :disabled="s9Modal.processing" @click="saveS9Modal">
+            {{ s9Modal.processing ? '保存中...' : '保存' }}
           </button>
         </div>
       </div>
@@ -907,6 +1017,14 @@ interface MonthlyAccountingHistoryRecord {
   created_at: string
 }
 
+interface DirectedExpenseRecord {
+  id: number
+  work_month: string
+  description: string
+  amount: number
+  project_ids: number[]
+}
+
 type S4MetricKey = 'sales' | 'gross_profit' | 'selling_general_admin_cost' | 'accounting_operating_profit'
 
 interface S4DiffMetric {
@@ -991,6 +1109,7 @@ const props = defineProps<{
   officer_monthly_results: StaffMonthlyResultRecord[]
   monthly_accounting_data: MonthlyAccountingDataRecord[]
   monthly_accounting_histories: MonthlyAccountingHistoryRecord[]
+  directed_expenses: DirectedExpenseRecord[]
   initialData?: Record<string, unknown>
 }>()
 
@@ -1007,7 +1126,6 @@ interface User { id: string; name: string; email: string; role: UserRole }
 interface DemoProject { id: string; name: string; client: string; status: 'open' | 'closed' }
 interface MonthDef { key: string; label: string; month: number }
 interface S5CellValue { hours: number; unitPrice: number }
-interface Expense { id: string; month: string; name: string; amount: number; projectIds: string[] }
 interface Adjustment { id: string; userId: string; projectId: string; fromMonth: string; toMonth: string; amount: number; memo: string }
 interface PersistedBillingAdjustment {
   userId: string
@@ -1042,6 +1160,28 @@ interface S8DisplaySelection {
   mode: S8DisplayMode
   calendarYear: number
   fiscalYear: number
+}
+
+interface S9ProjectTag {
+  id: number
+  name: string
+  is_active: boolean
+}
+
+interface S9ExpenseRow {
+  id: number
+  work_month: string
+  description: string
+  amount: number
+  project_ids: number[]
+  active_project_ids: number[]
+  closed_project_ids: number[]
+  projects: S9ProjectTag[]
+}
+
+interface S9MonthOption {
+  key: string
+  label: string
 }
 
 interface ParsedS5ChildField {
@@ -1926,10 +2066,115 @@ const refreshS8InternalCosts = () => {
 
 rebuildS8Rows()
 
-const expenses = reactive<Expense[]>([
-  { id: 'e1', month: '2025-11', name: 'Kaigi on Rails 参加費', amount: 100000, projectIds: ['p001', 'p002'] },
-  { id: 'e2', month: '2025-12', name: 'Laravel ライセンス', amount: 50000, projectIds: ['p003'] }
-])
+const s9ProjectById = computed(() => new Map(props.projects.map((project) => [project.id, project])))
+const s9ActiveProjects = computed(() => s3Projects.value.filter((project) => project.is_active))
+
+const toS9ProjectTag = (projectId: number): S9ProjectTag => {
+  const project = s9ProjectById.value.get(projectId)
+  if (!project) {
+    return {
+      id: projectId,
+      name: `不明案件（ID:${projectId}）`,
+      is_active: false
+    }
+  }
+
+  return {
+    id: project.id,
+    name: project.name,
+    is_active: project.is_active
+  }
+}
+
+const s9Expenses = computed<S9ExpenseRow[]>(() => {
+  return [...props.directed_expenses]
+    .map((expense) => {
+      const projects = expense.project_ids.map((projectId) => toS9ProjectTag(projectId))
+      const activeProjectIds = projects.filter((project) => project.is_active).map((project) => project.id).sort((a, b) => a - b)
+      const closedProjectIds = projects.filter((project) => !project.is_active).map((project) => project.id).sort((a, b) => a - b)
+
+      return {
+        id: expense.id,
+        work_month: expense.work_month,
+        description: expense.description,
+        amount: Number(expense.amount) || 0,
+        project_ids: [...expense.project_ids].sort((a, b) => a - b),
+        active_project_ids: activeProjectIds,
+        closed_project_ids: closedProjectIds,
+        projects
+      }
+    })
+    .sort((a, b) => {
+      if (a.work_month !== b.work_month) return b.work_month.localeCompare(a.work_month)
+      return b.id - a.id
+    })
+})
+
+const s9MonthOptions = computed<S9MonthOption[]>(() => {
+  const monthKeys = new Set<string>([
+    ...visibleMonths.value.map((monthDef) => monthDef.key),
+    ...props.directed_expenses.map((expense) => expense.work_month)
+  ])
+
+  return [...monthKeys]
+    .sort()
+    .map((monthKeyValue) => ({
+      key: monthKeyValue,
+      label: formatMonthLabel(monthKeyValue)
+    }))
+})
+
+const s9YearOptions = computed(() => {
+  const years = new Set<number>()
+  s9MonthOptions.value.forEach((option) => {
+    const year = Number(option.key.slice(0, 4))
+    if (Number.isInteger(year)) years.add(year)
+  })
+  return [...years].sort((a, b) => b - a)
+})
+
+const s9YearFilter = ref<string>('all')
+const s9SearchQuery = ref('')
+const s9ModalSnapshot = ref('')
+const s9Modal = reactive({
+  open: false,
+  mode: 'create' as 'create' | 'edit',
+  id: null as number | null,
+  processing: false,
+  dirty: false,
+  form: {
+    work_month: '',
+    description: '',
+    amount: 0,
+    active_project_ids: [] as number[],
+    closed_project_ids: [] as number[]
+  }
+})
+
+const s9ServerError = computed(() => {
+  return firstServerError('directed_expense') ||
+    firstServerError('work_month') ||
+    firstServerError('description') ||
+    firstServerError('amount') ||
+    firstServerError('project_ids')
+})
+
+const s9FilteredExpenses = computed(() => {
+  const normalizedSearch = s9SearchQuery.value.trim().toLowerCase()
+  return s9Expenses.value.filter((expense) => {
+    if (s9YearFilter.value !== 'all' && !expense.work_month.startsWith(`${s9YearFilter.value}-`)) {
+      return false
+    }
+    if (!normalizedSearch) return true
+
+    const projectNames = expense.projects.map((project) => project.name).join(' ')
+    return expense.description.toLowerCase().includes(normalizedSearch) || projectNames.toLowerCase().includes(normalizedSearch)
+  })
+})
+
+const s9ModalClosedProjects = computed(() => {
+  return s9Modal.form.closed_project_ids.map((projectId) => toS9ProjectTag(projectId))
+})
 
 const adjustments = reactive<Adjustment[]>([
   { id: 'a1', userId: 'u04', projectId: 'p002', fromMonth: '2026-01', toMonth: '2026-02', amount: -18000, memo: '1月分 請求時間誤り修正' }
@@ -2170,7 +2415,7 @@ const toast = reactive({ show: false, type: 'success' as 'success' | 'error', me
 
 const errors = reactive<Record<string, string>>({})
 const dirty = ref(false)
-const hasUnsavedChanges = computed(() => dirty.value || s5Edited.value || s6Edited.value || s7Edited.value || s8Edited.value)
+const hasUnsavedChanges = computed(() => dirty.value || s5Edited.value || s6Edited.value || s7Edited.value || s8Edited.value || s9Modal.dirty)
 let skipDirtyTracking = true
 let suppressBeforeVisitGuard = false
 
@@ -3406,21 +3651,231 @@ function onS8CellChanged(event: {
   markDirty()
 }
 
-function addExpense() {
-  expenses.push({ id: `e${Date.now()}`, month: visibleMonths.value[0]?.key ?? '', name: '', amount: 0, projectIds: [] })
-  markDirty()
+function clearS9ModalErrors() {
+  clearErrors('s9_modal')
 }
 
-function removeExpense(index: number) {
-  expenses.splice(index, 1)
-  markDirty()
+function buildS9ModalSnapshot() {
+  return JSON.stringify({
+    work_month: s9Modal.form.work_month,
+    description: s9Modal.form.description.trim(),
+    amount: Number(s9Modal.form.amount) || 0,
+    active_project_ids: [...s9Modal.form.active_project_ids].sort((a, b) => a - b),
+    closed_project_ids: [...s9Modal.form.closed_project_ids].sort((a, b) => a - b)
+  })
 }
 
-function toggleExpenseProject(expense: Expense, projectId: string, checked: boolean) {
-  const has = expense.projectIds.includes(projectId)
-  if (checked && !has) expense.projectIds.push(projectId)
-  if (!checked && has) expense.projectIds = expense.projectIds.filter((id) => id !== projectId)
-  markDirty()
+function captureS9ModalSnapshot() {
+  s9ModalSnapshot.value = buildS9ModalSnapshot()
+  s9Modal.dirty = false
+}
+
+function setS9ModalForm(options: {
+  work_month: string
+  description: string
+  amount: number
+  active_project_ids: number[]
+  closed_project_ids: number[]
+}) {
+  s9Modal.form.work_month = options.work_month
+  s9Modal.form.description = options.description
+  s9Modal.form.amount = options.amount
+  s9Modal.form.active_project_ids.splice(0, s9Modal.form.active_project_ids.length, ...options.active_project_ids)
+  s9Modal.form.closed_project_ids.splice(0, s9Modal.form.closed_project_ids.length, ...options.closed_project_ids)
+}
+
+function confirmS9DiscardChanges() {
+  if (!s9Modal.open || !s9Modal.dirty) return true
+  return window.confirm('S9で未保存の変更があります。破棄してよろしいですか？')
+}
+
+function pickS9DefaultMonth() {
+  const latestMonth = s9MonthOptions.value[s9MonthOptions.value.length - 1]?.key
+  if (latestMonth) return latestMonth
+  const nowDate = new Date()
+  return `${nowDate.getFullYear()}-${String(nowDate.getMonth() + 1).padStart(2, '0')}`
+}
+
+function openS9CreateModal() {
+  if (!confirmS9DiscardChanges()) return
+
+  s9Modal.open = true
+  s9Modal.mode = 'create'
+  s9Modal.id = null
+  s9Modal.processing = false
+  clearS9ModalErrors()
+  setS9ModalForm({
+    work_month: pickS9DefaultMonth(),
+    description: '',
+    amount: 0,
+    active_project_ids: [],
+    closed_project_ids: []
+  })
+  captureS9ModalSnapshot()
+}
+
+function openS9EditModal(expense: S9ExpenseRow) {
+  if (!confirmS9DiscardChanges()) return
+
+  s9Modal.open = true
+  s9Modal.mode = 'edit'
+  s9Modal.id = expense.id
+  s9Modal.processing = false
+  clearS9ModalErrors()
+  setS9ModalForm({
+    work_month: expense.work_month,
+    description: expense.description,
+    amount: expense.amount,
+    active_project_ids: [...expense.active_project_ids],
+    closed_project_ids: [...expense.closed_project_ids]
+  })
+  captureS9ModalSnapshot()
+}
+
+function closeS9Modal(force = false) {
+  if (s9Modal.processing && !force) return
+  if (!force && !confirmS9DiscardChanges()) return
+
+  s9Modal.open = false
+  s9Modal.mode = 'create'
+  s9Modal.id = null
+  s9Modal.processing = false
+  s9Modal.dirty = false
+  clearS9ModalErrors()
+  setS9ModalForm({
+    work_month: '',
+    description: '',
+    amount: 0,
+    active_project_ids: [],
+    closed_project_ids: []
+  })
+  s9ModalSnapshot.value = ''
+}
+
+function onS9YearFilterChanged(nextYearFilter: string) {
+  if (s9YearFilter.value === nextYearFilter) return
+
+  if (s9Modal.open && s9Modal.dirty) {
+    const confirmed = window.confirm('S9で編集中の未保存変更があります。年度フィルタを変更しますか？')
+    if (!confirmed) return
+  }
+
+  s9YearFilter.value = nextYearFilter
+}
+
+function toggleS9ModalProject(projectId: number, checked: boolean) {
+  const activeProjectIds = s9Modal.form.active_project_ids
+  const has = activeProjectIds.includes(projectId)
+  if (checked && !has) {
+    activeProjectIds.push(projectId)
+    return
+  }
+  if (!checked && has) {
+    s9Modal.form.active_project_ids = activeProjectIds.filter((id) => id !== projectId)
+  }
+}
+
+function validateS9Modal() {
+  clearS9ModalErrors()
+  let isValid = true
+
+  if (!s9Modal.form.work_month) {
+    errors['s9_modal.work_month'] = '対象月は必須です'
+    isValid = false
+  }
+
+  if (!s9Modal.form.description.trim()) {
+    errors['s9_modal.description'] = '経費名は必須です'
+    isValid = false
+  }
+
+  const amount = Number(s9Modal.form.amount)
+  if (!Number.isInteger(amount) || amount < 0) {
+    errors['s9_modal.amount'] = '金額は0以上の整数で入力してください'
+    isValid = false
+  }
+
+  const needsActiveProjects = s9Modal.mode === 'create' || s9Modal.form.closed_project_ids.length === 0
+  if (needsActiveProjects && s9Modal.form.active_project_ids.length === 0) {
+    errors['s9_modal.project_ids'] = '案件を1件以上選択してください'
+    isValid = false
+  }
+
+  return isValid
+}
+
+function applyS9ServerErrors(serverErrors: unknown) {
+  clearS9ModalErrors()
+
+  errors['s9_modal.work_month'] = firstInertiaError(serverErrors, 'work_month')
+  errors['s9_modal.description'] = firstInertiaError(serverErrors, 'description')
+  errors['s9_modal.amount'] = firstInertiaError(serverErrors, 'amount')
+  errors['s9_modal.project_ids'] = firstInertiaError(serverErrors, 'project_ids')
+  errors['s9_modal.base'] = firstInertiaError(serverErrors, 'directed_expense') || 'S9を保存できませんでした。'
+}
+
+function saveS9Modal() {
+  if (s9Modal.processing) return
+  if (!validateS9Modal()) return
+
+  const payload = {
+    directed_expense: {
+      work_month: s9Modal.form.work_month,
+      description: s9Modal.form.description.trim(),
+      amount: Number(s9Modal.form.amount),
+      project_ids: [...new Set(s9Modal.form.active_project_ids)].sort((a, b) => a - b)
+    }
+  }
+
+  s9Modal.processing = true
+  suppressBeforeVisitGuard = true
+
+  const options = {
+    preserveScroll: true,
+    preserveState: true,
+    onSuccess: () => {
+      closeS9Modal(true)
+    },
+    onError: (serverErrors: unknown) => {
+      applyS9ServerErrors(serverErrors)
+    },
+    onFinish: () => {
+      s9Modal.processing = false
+      suppressBeforeVisitGuard = false
+    }
+  }
+
+  if (s9Modal.mode === 'create') {
+    router.post('/directed_expenses', payload, options)
+    return
+  }
+
+  if (s9Modal.id === null) {
+    s9Modal.processing = false
+    suppressBeforeVisitGuard = false
+    return
+  }
+  router.patch(`/directed_expenses/${s9Modal.id}`, payload, options)
+}
+
+function deleteS9Expense() {
+  if (s9Modal.mode !== 'edit' || s9Modal.id === null || s9Modal.processing) return
+  if (!window.confirm('この特定経費を削除します。よろしいですか？')) return
+
+  s9Modal.processing = true
+  suppressBeforeVisitGuard = true
+
+  router.delete(`/directed_expenses/${s9Modal.id}`, {
+    preserveScroll: true,
+    preserveState: true,
+    onSuccess: () => {
+      closeS9Modal(true)
+    },
+    onFinish: () => {
+      s9Modal.processing = false
+      suppressBeforeVisitGuard = false
+    }
+  })
 }
 
 function addAdjustment() {
@@ -3613,15 +4068,6 @@ function validateSection(section: string) {
       return false
     }
     return true
-  }
-  if (section === 's9') {
-    let ok = true
-    expenses.forEach((e, idx) => {
-      if (!e.month) { errors[`s9.${idx}.month`] = '対象月は必須です'; ok = false }
-      if (!e.name) { errors[`s9.${idx}.name`] = '経費名は必須です'; ok = false }
-      if (Number.isNaN(Number(e.amount))) { errors[`s9.${idx}.amount`] = '金額は数値で入力してください'; ok = false }
-    })
-    return ok
   }
   if (section === 's10') {
     let ok = true
@@ -4070,7 +4516,38 @@ watch(
   { immediate: true, deep: true }
 )
 
-watch([users, projects, expenses, adjustments], () => {
+watch(
+  () => ({
+    open: s9Modal.open,
+    work_month: s9Modal.form.work_month,
+    description: s9Modal.form.description,
+    amount: Number(s9Modal.form.amount) || 0,
+    active_project_ids: [...s9Modal.form.active_project_ids].sort((a, b) => a - b),
+    closed_project_ids: [...s9Modal.form.closed_project_ids].sort((a, b) => a - b)
+  }),
+  (state) => {
+    if (!state.open) {
+      s9Modal.dirty = false
+      return
+    }
+    s9Modal.dirty = buildS9ModalSnapshot() !== s9ModalSnapshot.value
+  },
+  { deep: true }
+)
+
+watch(s9YearOptions, (years) => {
+  if (s9YearFilter.value === 'all') return
+  const selectedYear = Number(s9YearFilter.value)
+  if (!Number.isInteger(selectedYear)) {
+    s9YearFilter.value = 'all'
+    return
+  }
+  if (!years.includes(selectedYear)) {
+    s9YearFilter.value = 'all'
+  }
+}, { immediate: true })
+
+watch([users, projects, adjustments], () => {
   if (skipDirtyTracking) return
   markDirty()
 }, { deep: true })
