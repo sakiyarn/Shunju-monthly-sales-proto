@@ -737,38 +737,71 @@
       </div>
     </section>
 
-    <section class="card">
-      <h2 class="card-title">🛠️ セクション10: 請求調整</h2>
-      <button class="btn-accent mb-3" @click="addAdjustment">＋ 調整を追加</button>
-      <div class="space-y-3">
-        <div v-for="(a, idx) in adjustments" :key="a.id" class="rounded border border-slate-200 p-3">
-          <div class="grid grid-cols-1 gap-2 md:grid-cols-3">
-            <select v-model="a.userId" class="input" :class="errorClass(`s10.${idx}.userId`)">
-              <option value="">対象メンバー</option><option v-for="u in users" :key="u.id" :value="u.id">{{ u.name }}</option>
-            </select>
-            <select v-model="a.projectId" class="input" :class="errorClass(`s10.${idx}.projectId`)">
-              <option value="">対象案件</option><option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }}</option>
-            </select>
-            <input v-model.number="a.amount" type="number" class="input" placeholder="調整金額" :class="errorClass(`s10.${idx}.amount`)" />
-            <select v-model="a.fromMonth" class="input" :class="errorClass(`s10.${idx}.fromMonth`)">
-              <option value="">元の月</option><option v-for="m in visibleMonths" :key="`from-${m.key}`" :value="m.key">{{ m.label }}</option>
-            </select>
-            <select v-model="a.toMonth" class="input" :class="errorClass(`s10.${idx}.toMonth`)">
-              <option value="">反映月</option><option v-for="m in visibleMonths" :key="`to-${m.key}`" :value="m.key">{{ m.label }}</option>
-            </select>
-            <button class="btn-sub" @click="removeAdjustment(idx)">削除</button>
-          </div>
-          <input v-model="a.memo" class="mt-2 w-full rounded border border-slate-300 bg-base px-3 py-2 text-sm" placeholder="メモ" :class="errorClass(`s10.${idx}.memo`)" />
-          <p class="mt-1 text-xs text-slate-500">{{ formatYen(a.amount) }}</p>
-          <p v-if="errors[`s10.${idx}.userId`]" class="error-msg">{{ errors[`s10.${idx}.userId`] }}</p>
-          <p v-if="errors[`s10.${idx}.projectId`]" class="error-msg">{{ errors[`s10.${idx}.projectId`] }}</p>
-          <p v-if="errors[`s10.${idx}.amount`]" class="error-msg">{{ errors[`s10.${idx}.amount`] }}</p>
-          <p v-if="errors[`s10.${idx}.fromMonth`]" class="error-msg">{{ errors[`s10.${idx}.fromMonth`] }}</p>
-          <p v-if="errors[`s10.${idx}.toMonth`]" class="error-msg">{{ errors[`s10.${idx}.toMonth`] }}</p>
-          <p v-if="errors[`s10.${idx}.memo`]" class="error-msg">{{ errors[`s10.${idx}.memo`] }}</p>
+    <section class="card master-s10-card">
+      <div class="master-s10-head">
+        <div>
+          <h2 class="card-title mb-0">🛠️ セクション10: 請求調整</h2>
+          <p class="master-s10-head-note">暦年フィルタで履歴確認できます。編集は行ごとの編集ボタンから行います。</p>
         </div>
+        <button class="btn-accent cursor-pointer" @click="openS10CreateModal">＋ 調整を追加</button>
       </div>
-      <button class="btn-save" @click="saveSection('s10')">保存</button>
+
+      <div class="master-s10-toolbar">
+        <label class="text-sm text-slate-700">
+          年度
+          <select class="input ml-2 min-w-28" :value="s10YearFilter" @change="onS10YearFilterChanged(($event.target as HTMLSelectElement).value)">
+            <option value="all">すべて</option>
+            <option v-for="year in s10YearOptions" :key="`s10-year-${year}`" :value="String(year)">{{ year }}年</option>
+          </select>
+        </label>
+      </div>
+
+      <p v-if="errors.s10" class="mb-3 error-msg">{{ errors.s10 }}</p>
+      <p v-else-if="s10ServerError" class="mb-3 error-msg">{{ s10ServerError }}</p>
+
+      <div class="master-s10-list-wrap">
+        <table class="master-s10-table">
+          <thead>
+            <tr>
+              <th>反映月</th>
+              <th>元の月</th>
+              <th>対象メンバー</th>
+              <th>対象案件</th>
+              <th class="text-right">調整金額</th>
+              <th>メモ</th>
+              <th class="text-right">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="adjustment in s10FilteredAdjustments" :key="adjustment.local_id">
+              <td>{{ formatMonthLabel(adjustment.applied_month) }}</td>
+              <td>{{ formatMonthLabel(adjustment.original_month) }}</td>
+              <td>
+                <span>{{ adjustment.user_label }}</span>
+                <span v-if="!adjustment.user_active" class="master-s10-status-chip">無効</span>
+              </td>
+              <td>
+                <span>{{ adjustment.project_label }}</span>
+                <span v-if="!adjustment.project_active" class="master-s10-status-chip">終了</span>
+              </td>
+              <td class="text-right font-semibold text-slate-900">{{ formatYen(adjustment.adjustment_amount) }}</td>
+              <td class="master-s10-memo-cell">{{ adjustment.memo }}</td>
+              <td class="text-right">
+                <button class="btn-sub cursor-pointer" @click="openS10EditModal(adjustment)">編集</button>
+              </td>
+            </tr>
+            <tr v-if="s10FilteredAdjustments.length === 0">
+              <td colspan="7" class="master-s10-empty">条件に一致する請求調整はありません。</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="master-s10-footer">
+        <button class="btn-save cursor-pointer" :disabled="s10State.processing || !s10Edited" @click="saveSection('s10')">
+          {{ s10Edited ? '保存（未保存あり）' : '保存' }}
+        </button>
+      </div>
     </section>
 
     <div v-if="toast.show" class="fixed right-4 top-20 rounded px-4 py-2 text-sm font-semibold" :class="toast.type === 'success' ? 'bg-green-600' : 'bg-red-600'">{{ toast.message }}</div>
@@ -866,6 +899,88 @@
           </button>
           <button class="btn-accent" :disabled="s9Modal.processing" @click="saveS9Modal">
             {{ s9Modal.processing ? '保存中...' : '保存' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="s10Modal.open" class="fixed inset-0 z-50 grid place-items-center bg-black/60">
+      <div class="w-full max-w-2xl rounded-lg border border-slate-200 bg-card p-4">
+        <h3 class="mb-1 text-lg font-semibold">{{ s10Modal.mode === 'create' ? '請求調整を追加' : '請求調整を編集' }}</h3>
+        <p class="mb-3 text-xs text-slate-600">元の月は必須です。初回はメモ候補を自動入力します。</p>
+
+        <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <label class="text-sm text-slate-700">
+            対象メンバー
+            <select v-model.number="s10Modal.form.user_id" class="input mt-1 w-full" :class="errorClass('s10_modal.user_id')">
+              <option :value="null">対象メンバーを選択</option>
+              <option v-for="user in s10ModalUserOptions" :key="`s10-user-${user.id}`" :value="user.id">{{ user.label }}</option>
+            </select>
+          </label>
+          <label class="text-sm text-slate-700">
+            対象案件
+            <select v-model.number="s10Modal.form.project_id" class="input mt-1 w-full" :class="errorClass('s10_modal.project_id')">
+              <option :value="null">対象案件を選択</option>
+              <option v-for="project in s10ModalProjectOptions" :key="`s10-project-${project.id}`" :value="project.id">{{ project.label }}</option>
+            </select>
+          </label>
+          <label class="text-sm text-slate-700">
+            元の月
+            <select v-model="s10Modal.form.original_month" class="input mt-1 w-full" :class="errorClass('s10_modal.original_month')">
+              <option value="">元の月を選択</option>
+              <option v-for="option in s10MonthOptions" :key="`s10-from-${option.key}`" :value="option.key">{{ option.label }}</option>
+            </select>
+          </label>
+          <label class="text-sm text-slate-700">
+            反映月
+            <select v-model="s10Modal.form.applied_month" class="input mt-1 w-full" :class="errorClass('s10_modal.applied_month')">
+              <option value="">反映月を選択</option>
+              <option v-for="option in s10MonthOptions" :key="`s10-to-${option.key}`" :value="option.key">{{ option.label }}</option>
+            </select>
+          </label>
+          <label class="text-sm text-slate-700 md:col-span-2">
+            調整金額（円）
+            <input
+              v-model.number="s10Modal.form.adjustment_amount"
+              type="number"
+              step="1"
+              class="input mt-1 w-full"
+              :class="errorClass('s10_modal.adjustment_amount')"
+            />
+            <p class="mt-1 text-xs text-slate-500">表示: {{ formatYen(Number(s10Modal.form.adjustment_amount) || 0) }}</p>
+          </label>
+          <label class="text-sm text-slate-700 md:col-span-2">
+            メモ
+            <input
+              :value="s10Modal.form.memo"
+              class="input mt-1 w-full"
+              placeholder="例: 2026年1月分 請求時間誤り修正 -18,000円"
+              :class="errorClass('s10_modal.memo')"
+              @input="onS10MemoInput(($event.target as HTMLInputElement).value)"
+            />
+          </label>
+        </div>
+
+        <p v-if="errors['s10_modal.user_id']" class="error-msg mt-2">{{ errors['s10_modal.user_id'] }}</p>
+        <p v-if="errors['s10_modal.project_id']" class="error-msg">{{ errors['s10_modal.project_id'] }}</p>
+        <p v-if="errors['s10_modal.original_month']" class="error-msg">{{ errors['s10_modal.original_month'] }}</p>
+        <p v-if="errors['s10_modal.applied_month']" class="error-msg">{{ errors['s10_modal.applied_month'] }}</p>
+        <p v-if="errors['s10_modal.adjustment_amount']" class="error-msg">{{ errors['s10_modal.adjustment_amount'] }}</p>
+        <p v-if="errors['s10_modal.memo']" class="error-msg">{{ errors['s10_modal.memo'] }}</p>
+        <p v-if="errors['s10_modal.base']" class="error-msg">{{ errors['s10_modal.base'] }}</p>
+
+        <div class="mt-4 flex justify-end gap-2">
+          <button class="btn-sub" :disabled="s10Modal.processing" @click="closeS10Modal">キャンセル</button>
+          <button
+            v-if="s10Modal.mode === 'edit'"
+            class="btn-sub text-red-700"
+            :disabled="s10Modal.processing"
+            @click="deleteS10FromModal"
+          >
+            削除
+          </button>
+          <button class="btn-accent" :disabled="s10Modal.processing" @click="saveS10Modal">
+            {{ s10Modal.processing ? '保存中...' : '保存' }}
           </button>
         </div>
       </div>
@@ -1025,6 +1140,18 @@ interface DirectedExpenseRecord {
   project_ids: number[]
 }
 
+interface BillingAdjustmentRecord {
+  id: number
+  user_id: number
+  project_id: number
+  original_month: string
+  applied_month: string
+  adjustment_amount: number
+  memo: string
+  created_at: string
+  updated_at: string
+}
+
 type S4MetricKey = 'sales' | 'gross_profit' | 'selling_general_admin_cost' | 'accounting_operating_profit'
 
 interface S4DiffMetric {
@@ -1110,6 +1237,7 @@ const props = defineProps<{
   monthly_accounting_data: MonthlyAccountingDataRecord[]
   monthly_accounting_histories: MonthlyAccountingHistoryRecord[]
   directed_expenses: DirectedExpenseRecord[]
+  billing_adjustments: BillingAdjustmentRecord[]
   initialData?: Record<string, unknown>
 }>()
 
@@ -1126,7 +1254,6 @@ interface User { id: string; name: string; email: string; role: UserRole }
 interface DemoProject { id: string; name: string; client: string; status: 'open' | 'closed' }
 interface MonthDef { key: string; label: string; month: number }
 interface S5CellValue { hours: number; unitPrice: number }
-interface Adjustment { id: string; userId: string; projectId: string; fromMonth: string; toMonth: string; amount: number; memo: string }
 interface PersistedBillingAdjustment {
   userId: string
   userName: string
@@ -1136,6 +1263,35 @@ interface PersistedBillingAdjustment {
   toMonth: string
   amount: number
   memo: string
+}
+
+interface S10DraftAdjustment {
+  local_id: string
+  id: number | null
+  user_id: number | null
+  project_id: number | null
+  original_month: string
+  applied_month: string
+  adjustment_amount: number
+  memo: string
+  memo_touched: boolean
+}
+
+interface S10ListRow extends S10DraftAdjustment {
+  user_label: string
+  user_active: boolean
+  project_label: string
+  project_active: boolean
+}
+
+interface S10MonthOption {
+  key: string
+  label: string
+}
+
+interface S10ModalOption {
+  id: number
+  label: string
 }
 
 interface S5DisplaySelection {
@@ -2176,9 +2332,187 @@ const s9ModalClosedProjects = computed(() => {
   return s9Modal.form.closed_project_ids.map((projectId) => toS9ProjectTag(projectId))
 })
 
-const adjustments = reactive<Adjustment[]>([
-  { id: 'a1', userId: 'u04', projectId: 'p002', fromMonth: '2026-01', toMonth: '2026-02', amount: -18000, memo: '1月分 請求時間誤り修正' }
-])
+const s10ProjectById = computed(() => new Map(props.projects.map((project) => [project.id, project])))
+const s10UserById = computed(() => new Map(props.users.map((user) => [user.id, user])))
+
+const createS10LocalId = () => `s10-new-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+const s10Adjustments = reactive<S10DraftAdjustment[]>([])
+const s10DeletedIds = reactive<number[]>([])
+const s10Edited = ref(false)
+const s10YearFilter = ref<string>('all')
+const s10ModalSnapshot = ref('')
+const s10ModalDirty = ref(false)
+const s10State = reactive({
+  processing: false
+})
+const s10Modal = reactive({
+  open: false,
+  mode: 'create' as 'create' | 'edit',
+  local_id: '' as string,
+  processing: false,
+  form: {
+    id: null as number | null,
+    user_id: null as number | null,
+    project_id: null as number | null,
+    original_month: '',
+    applied_month: '',
+    adjustment_amount: 0,
+    memo: '',
+    memo_touched: false
+  }
+})
+
+const toS10UserLabel = (user: UserRecord) => `${user.name}（${user.role_name || '未設定'}）`
+const toS10ProjectLabel = (project: ProjectRecord) => project.name
+
+const resolveS10UserTag = (userId: number | null) => {
+  if (typeof userId !== 'number' || !Number.isInteger(userId)) return null
+  const user = s10UserById.value.get(userId)
+  if (!user) {
+    return { id: userId, label: `(未設定) 不明メンバー（ID:${userId}）`, is_active: false }
+  }
+  return { id: user.id, label: toS10UserLabel(user), is_active: user.is_active }
+}
+
+const resolveS10ProjectTag = (projectId: number | null) => {
+  if (typeof projectId !== 'number' || !Number.isInteger(projectId)) return null
+  const project = s10ProjectById.value.get(projectId)
+  if (!project) {
+    return { id: projectId, label: `不明案件（ID:${projectId}）`, is_active: false }
+  }
+  return { id: project.id, label: toS10ProjectLabel(project), is_active: project.is_active }
+}
+
+const s10ListRows = computed<S10ListRow[]>(() => {
+  return [...s10Adjustments]
+    .map((adjustment) => {
+      const userTag = resolveS10UserTag(adjustment.user_id)
+      const projectTag = resolveS10ProjectTag(adjustment.project_id)
+      return {
+        ...adjustment,
+        user_label: userTag?.label ?? '未選択',
+        user_active: userTag?.is_active ?? false,
+        project_label: projectTag?.label ?? '未選択',
+        project_active: projectTag?.is_active ?? false
+      }
+    })
+    .sort((a, b) => {
+      if (a.applied_month !== b.applied_month) return b.applied_month.localeCompare(a.applied_month)
+      if ((a.id ?? 0) !== (b.id ?? 0)) return (b.id ?? 0) - (a.id ?? 0)
+      return a.local_id.localeCompare(b.local_id)
+    })
+})
+
+const s10MonthOptions = computed<S10MonthOption[]>(() => {
+  const monthKeys = new Set<string>([
+    ...visibleMonths.value.map((monthDef) => monthDef.key),
+    ...props.billing_adjustments.map((adjustment) => adjustment.original_month),
+    ...props.billing_adjustments.map((adjustment) => adjustment.applied_month)
+  ])
+
+  return [...monthKeys]
+    .filter((monthKeyValue) => Boolean(monthKeyValue))
+    .sort()
+    .map((monthKeyValue) => ({
+      key: monthKeyValue,
+      label: formatMonthLabel(monthKeyValue)
+    }))
+})
+
+const s10YearOptions = computed(() => {
+  const years = new Set<number>()
+  s10ListRows.value.forEach((row) => {
+    const year = Number(row.applied_month.slice(0, 4))
+    if (Number.isInteger(year)) years.add(year)
+  })
+  return [...years].sort((a, b) => b - a)
+})
+
+const s10FilteredAdjustments = computed(() => {
+  return s10ListRows.value.filter((row) => {
+    if (s10YearFilter.value === 'all') return true
+    return row.applied_month.startsWith(`${s10YearFilter.value}-`)
+  })
+})
+
+const s10ServerError = computed(() => {
+  return firstServerError('billing_adjustment') ||
+    firstServerError('entries') ||
+    firstServerError('deleted_ids') ||
+    firstServerError('user_id') ||
+    firstServerError('project_id') ||
+    firstServerError('original_month') ||
+    firstServerError('applied_month') ||
+    firstServerError('adjustment_amount') ||
+    firstServerError('memo')
+})
+
+const s10ModalUserOptions = computed<S10ModalOption[]>(() => {
+  const options = props.users
+    .filter((user) => user.is_active)
+    .sort((a, b) => {
+      if (a.display_order !== b.display_order) return a.display_order - b.display_order
+      return a.name.localeCompare(b.name, 'ja')
+    })
+    .map((user) => ({ id: user.id, label: toS10UserLabel(user) }))
+
+  const selectedTag = resolveS10UserTag(s10Modal.form.user_id)
+  if (selectedTag && !selectedTag.is_active && !options.some((option) => option.id === selectedTag.id)) {
+    options.push({ id: selectedTag.id, label: `${selectedTag.label}（無効）` })
+  }
+
+  return options
+})
+
+const s10ModalProjectOptions = computed<S10ModalOption[]>(() => {
+  const options = s3Projects.value
+    .filter((project) => project.is_active)
+    .sort((a, b) => {
+      if (a.display_order !== b.display_order) return a.display_order - b.display_order
+      return a.name.localeCompare(b.name, 'ja')
+    })
+    .map((project) => ({ id: project.id, label: toS10ProjectLabel(project) }))
+
+  const selectedTag = resolveS10ProjectTag(s10Modal.form.project_id)
+  if (selectedTag && !selectedTag.is_active && !options.some((option) => option.id === selectedTag.id)) {
+    options.push({ id: selectedTag.id, label: `${selectedTag.label}（終了）` })
+  }
+
+  return options
+})
+
+const buildS10ModalSnapshot = () => {
+  return JSON.stringify({
+    mode: s10Modal.mode,
+    local_id: s10Modal.local_id,
+    id: s10Modal.form.id,
+    user_id: s10Modal.form.user_id,
+    project_id: s10Modal.form.project_id,
+    original_month: s10Modal.form.original_month,
+    applied_month: s10Modal.form.applied_month,
+    adjustment_amount: Number(s10Modal.form.adjustment_amount) || 0,
+    memo: s10Modal.form.memo
+  })
+}
+
+const rebuildS10DraftAdjustments = () => {
+  const nextRows = props.billing_adjustments.map((adjustment) => ({
+    local_id: `s10-${adjustment.id}`,
+    id: adjustment.id,
+    user_id: adjustment.user_id,
+    project_id: adjustment.project_id,
+    original_month: adjustment.original_month,
+    applied_month: adjustment.applied_month,
+    adjustment_amount: Number(adjustment.adjustment_amount) || 0,
+    memo: adjustment.memo,
+    memo_touched: true
+  }))
+  s10Adjustments.splice(0, s10Adjustments.length, ...nextRows)
+  s10DeletedIds.splice(0, s10DeletedIds.length)
+  s10Edited.value = false
+}
+
+rebuildS10DraftAdjustments()
 
 const defaultColDef: ColDef = { editable: true, resizable: true }
 const s4DefaultColDef: ColDef = { editable: false, resizable: true }
@@ -2415,7 +2749,9 @@ const toast = reactive({ show: false, type: 'success' as 'success' | 'error', me
 
 const errors = reactive<Record<string, string>>({})
 const dirty = ref(false)
-const hasUnsavedChanges = computed(() => dirty.value || s5Edited.value || s6Edited.value || s7Edited.value || s8Edited.value || s9Modal.dirty)
+const hasUnsavedChanges = computed(() => {
+  return dirty.value || s5Edited.value || s6Edited.value || s7Edited.value || s8Edited.value || s9Modal.dirty || s10Edited.value || s10ModalDirty.value
+})
 let skipDirtyTracking = true
 let suppressBeforeVisitGuard = false
 
@@ -2467,14 +2803,6 @@ const userFormErrors = computed(() => ({
   system_role: firstServerError('system_role'),
   base: firstServerError('base')
 }))
-
-function userNameById(userId: string) {
-  return users.find((u) => u.id === userId)?.name ?? userId
-}
-
-function projectNameById(projectId: string) {
-  return projects.find((p) => p.id === projectId)?.name ?? projectId
-}
 
 const resetUserModalForm = () => {
   userModal.form.name = ''
@@ -3732,7 +4060,8 @@ function openS9EditModal(expense: S9ExpenseRow) {
   captureS9ModalSnapshot()
 }
 
-function closeS9Modal(force = false) {
+function closeS9Modal(forceOrEvent: boolean | Event = false) {
+  const force = typeof forceOrEvent === 'boolean' ? forceOrEvent : false
   if (s9Modal.processing && !force) return
   if (!force && !confirmS9DiscardChanges()) return
 
@@ -3878,30 +4207,272 @@ function deleteS9Expense() {
   })
 }
 
-function addAdjustment() {
-  adjustments.push({ id: `a${Date.now()}`, userId: '', projectId: '', fromMonth: '', toMonth: '', amount: 0, memo: '' })
-  markDirty()
+function clearS10ModalErrors() {
+  clearErrors('s10_modal')
 }
 
-function removeAdjustment(index: number) {
-  adjustments.splice(index, 1)
-  markDirty()
+function setS10ModalForm(options: {
+  local_id: string
+  id: number | null
+  user_id: number | null
+  project_id: number | null
+  original_month: string
+  applied_month: string
+  adjustment_amount: number
+  memo: string
+  memo_touched: boolean
+}) {
+  s10Modal.local_id = options.local_id
+  s10Modal.form.id = options.id
+  s10Modal.form.user_id = options.user_id
+  s10Modal.form.project_id = options.project_id
+  s10Modal.form.original_month = options.original_month
+  s10Modal.form.applied_month = options.applied_month
+  s10Modal.form.adjustment_amount = options.adjustment_amount
+  s10Modal.form.memo = options.memo
+  s10Modal.form.memo_touched = options.memo_touched
+}
+
+function captureS10ModalSnapshot() {
+  s10ModalSnapshot.value = buildS10ModalSnapshot()
+  s10ModalDirty.value = false
+}
+
+function confirmS10DiscardChanges() {
+  if (!s10Modal.open || !s10ModalDirty.value) return true
+  return window.confirm('S10で未保存の変更があります。破棄してよろしいですか？')
+}
+
+function pickS10DefaultMonth() {
+  const latestMonth = s10MonthOptions.value[s10MonthOptions.value.length - 1]?.key
+  if (latestMonth) return latestMonth
+  const nowDate = new Date()
+  return `${nowDate.getFullYear()}-${String(nowDate.getMonth() + 1).padStart(2, '0')}`
+}
+
+const formatS10MonthForMemo = (monthKeyValue: string) => {
+  const matched = monthKeyValue.match(/^(\d{4})-(\d{2})$/)
+  if (!matched) return monthKeyValue
+
+  const year = Number(matched[1])
+  const month = Number(matched[2])
+  if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
+    return monthKeyValue
+  }
+  return `${year}年${month}月`
+}
+
+const formatSignedYenText = (value: number) => {
+  const number = Number(value) || 0
+  const sign = number >= 0 ? '+' : '-'
+  return `${sign}${Math.abs(number).toLocaleString('ja-JP')}円`
+}
+
+function syncS10AutoMemo() {
+  if (!s10Modal.open || s10Modal.form.memo_touched) return
+  if (!s10Modal.form.original_month) return
+  s10Modal.form.memo = `${formatS10MonthForMemo(s10Modal.form.original_month)}分 請求時間誤り修正 ${formatSignedYenText(s10Modal.form.adjustment_amount)}`
+}
+
+function onS10MemoInput(value: string) {
+  s10Modal.form.memo = value
+  s10Modal.form.memo_touched = true
+}
+
+function openS10CreateModal() {
+  if (!confirmS10DiscardChanges()) return
+
+  s10Modal.open = true
+  s10Modal.mode = 'create'
+  s10Modal.processing = false
+  clearS10ModalErrors()
+
+  const defaultMonth = pickS10DefaultMonth()
+  setS10ModalForm({
+    local_id: createS10LocalId(),
+    id: null,
+    user_id: null,
+    project_id: null,
+    original_month: defaultMonth,
+    applied_month: defaultMonth,
+    adjustment_amount: 0,
+    memo: '',
+    memo_touched: false
+  })
+  syncS10AutoMemo()
+  captureS10ModalSnapshot()
+}
+
+function openS10EditModal(adjustment: S10ListRow) {
+  if (!confirmS10DiscardChanges()) return
+
+  s10Modal.open = true
+  s10Modal.mode = 'edit'
+  s10Modal.processing = false
+  clearS10ModalErrors()
+  setS10ModalForm({
+    local_id: adjustment.local_id,
+    id: adjustment.id,
+    user_id: adjustment.user_id,
+    project_id: adjustment.project_id,
+    original_month: adjustment.original_month,
+    applied_month: adjustment.applied_month,
+    adjustment_amount: adjustment.adjustment_amount,
+    memo: adjustment.memo,
+    memo_touched: true
+  })
+  captureS10ModalSnapshot()
+}
+
+function closeS10Modal(forceOrEvent: boolean | Event = false) {
+  const force = typeof forceOrEvent === 'boolean' ? forceOrEvent : false
+  if (s10Modal.processing && !force) return
+  if (!force && !confirmS10DiscardChanges()) return
+
+  s10Modal.open = false
+  s10Modal.mode = 'create'
+  s10Modal.processing = false
+  clearS10ModalErrors()
+  setS10ModalForm({
+    local_id: '',
+    id: null,
+    user_id: null,
+    project_id: null,
+    original_month: '',
+    applied_month: '',
+    adjustment_amount: 0,
+    memo: '',
+    memo_touched: false
+  })
+  s10ModalSnapshot.value = ''
+  s10ModalDirty.value = false
+}
+
+function onS10YearFilterChanged(nextYearFilter: string) {
+  if (s10YearFilter.value === nextYearFilter) return
+  if (s10Modal.open && s10ModalDirty.value) {
+    const confirmed = window.confirm('S10で編集中の未保存変更があります。年度フィルタを変更しますか？')
+    if (!confirmed) return
+  }
+  s10YearFilter.value = nextYearFilter
+}
+
+function validateS10Modal() {
+  clearS10ModalErrors()
+  let isValid = true
+
+  if (!Number.isInteger(s10Modal.form.user_id)) {
+    errors['s10_modal.user_id'] = '対象メンバーは必須です'
+    isValid = false
+  }
+  if (!Number.isInteger(s10Modal.form.project_id)) {
+    errors['s10_modal.project_id'] = '対象案件は必須です'
+    isValid = false
+  }
+  if (!s10Modal.form.original_month) {
+    errors['s10_modal.original_month'] = '元の月は必須です'
+    isValid = false
+  }
+  if (!s10Modal.form.applied_month) {
+    errors['s10_modal.applied_month'] = '反映月は必須です'
+    isValid = false
+  }
+
+  const amount = Number(s10Modal.form.adjustment_amount)
+  if (!Number.isInteger(amount)) {
+    errors['s10_modal.adjustment_amount'] = '調整金額は整数で入力してください'
+    isValid = false
+  }
+
+  if (!s10Modal.form.memo.trim()) {
+    errors['s10_modal.memo'] = 'メモは必須です'
+    isValid = false
+  }
+
+  return isValid
+}
+
+function applyS10ServerErrors(serverErrors: unknown) {
+  clearS10ModalErrors()
+  errors['s10_modal.user_id'] = firstInertiaError(serverErrors, 'user_id')
+  errors['s10_modal.project_id'] = firstInertiaError(serverErrors, 'project_id')
+  errors['s10_modal.original_month'] = firstInertiaError(serverErrors, 'original_month')
+  errors['s10_modal.applied_month'] = firstInertiaError(serverErrors, 'applied_month')
+  errors['s10_modal.adjustment_amount'] = firstInertiaError(serverErrors, 'adjustment_amount')
+  errors['s10_modal.memo'] = firstInertiaError(serverErrors, 'memo')
+  errors['s10_modal.base'] = firstInertiaError(serverErrors, 'billing_adjustment') || firstInertiaError(serverErrors, 'entries')
+}
+
+function markS10Edited() {
+  s10Edited.value = true
+}
+
+function saveS10Modal() {
+  if (s10Modal.processing) return
+  if (!validateS10Modal()) return
+
+  const payload: S10DraftAdjustment = {
+    local_id: s10Modal.local_id || createS10LocalId(),
+    id: s10Modal.form.id,
+    user_id: s10Modal.form.user_id,
+    project_id: s10Modal.form.project_id,
+    original_month: s10Modal.form.original_month,
+    applied_month: s10Modal.form.applied_month,
+    adjustment_amount: Number(s10Modal.form.adjustment_amount),
+    memo: s10Modal.form.memo.trim(),
+    memo_touched: true
+  }
+
+  const index = s10Adjustments.findIndex((adjustment) => adjustment.local_id === payload.local_id)
+  if (index >= 0) {
+    s10Adjustments.splice(index, 1, payload)
+  } else {
+    s10Adjustments.push(payload)
+  }
+
+  markS10Edited()
+  closeS10Modal(true)
+}
+
+function deleteS10FromModal() {
+  if (s10Modal.mode !== 'edit' || !s10Modal.local_id) return
+  if (!window.confirm('この請求調整を削除します。よろしいですか？')) return
+
+  const index = s10Adjustments.findIndex((adjustment) => adjustment.local_id === s10Modal.local_id)
+  if (index < 0) {
+    closeS10Modal(true)
+    return
+  }
+
+  const target = s10Adjustments[index]
+  if (target.id !== null && !s10DeletedIds.includes(target.id)) {
+    s10DeletedIds.push(target.id)
+  }
+  s10Adjustments.splice(index, 1)
+  markS10Edited()
+  closeS10Modal(true)
 }
 
 const toPersistedBillingAdjustments = (): PersistedBillingAdjustment[] => {
-  return adjustments.map((adjustment) => ({
-    userId: adjustment.userId,
-    userName: userNameById(adjustment.userId),
-    projectId: adjustment.projectId,
-    projectName: projectNameById(adjustment.projectId),
-    fromMonth: adjustment.fromMonth,
-    toMonth: adjustment.toMonth,
-    amount: Number(adjustment.amount) || 0,
-    memo: adjustment.memo
-  }))
+  return s10Adjustments
+    .filter((adjustment) => Number.isInteger(adjustment.user_id) && Number.isInteger(adjustment.project_id))
+    .map((adjustment) => {
+      const user = adjustment.user_id ? s10UserById.value.get(adjustment.user_id) : null
+      const project = adjustment.project_id ? s10ProjectById.value.get(adjustment.project_id) : null
+      return {
+        userId: String(adjustment.user_id),
+        userName: user?.display_name?.trim() || user?.name || String(adjustment.user_id),
+        projectId: String(adjustment.project_id),
+        projectName: project?.name || String(adjustment.project_id),
+        fromMonth: adjustment.original_month,
+        toMonth: adjustment.applied_month,
+        amount: Number(adjustment.adjustment_amount) || 0,
+        memo: adjustment.memo
+      }
+    })
 }
 
-function persistBillingAdjustments() {
+function persistBillingAdjustmentsMirror() {
   if (typeof window === 'undefined') return
   try {
     window.localStorage.setItem(BILLING_ADJUSTMENTS_STORAGE_KEY, JSON.stringify(toPersistedBillingAdjustments()))
@@ -3910,44 +4481,57 @@ function persistBillingAdjustments() {
   }
 }
 
-function loadBillingAdjustments() {
-  if (typeof window === 'undefined') return
-  try {
-    const raw = window.localStorage.getItem(BILLING_ADJUSTMENTS_STORAGE_KEY)
-    if (!raw) return
-
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return
-
-    const loaded = parsed.reduce<Adjustment[]>((acc, item, index) => {
-      if (!item || typeof item !== 'object') return acc
-      const candidate = item as Partial<Adjustment> & Partial<PersistedBillingAdjustment>
-      const userId = typeof candidate.userId === 'string' ? candidate.userId : ''
-      const projectId = typeof candidate.projectId === 'string' ? candidate.projectId : ''
-      const fromMonth = typeof candidate.fromMonth === 'string' ? candidate.fromMonth : ''
-      const toMonth = typeof candidate.toMonth === 'string' ? candidate.toMonth : ''
-      const memo = typeof candidate.memo === 'string' ? candidate.memo : ''
-      const amount = Number(candidate.amount)
-
-      if (!userId || !projectId || !fromMonth || !toMonth || !memo || Number.isNaN(amount)) return acc
-
-      acc.push({
-        id: typeof candidate.id === 'string' ? candidate.id : `a_imported_${index + 1}`,
-        userId,
-        projectId,
-        fromMonth,
-        toMonth,
-        amount,
-        memo
-      })
-      return acc
-    }, [])
-
-    if (loaded.length === 0) return
-    adjustments.splice(0, adjustments.length, ...loaded)
-  } catch {
-    // no-op
+function validateS10BeforeSubmit() {
+  clearErrors('s10')
+  if (s10Modal.open && s10ModalDirty.value) {
+    errors.s10 = 'S10の編集中データを保存または破棄してください。'
+    return false
   }
+  if (!s10Edited.value) {
+    errors.s10 = '保存対象データがありません。'
+    return false
+  }
+  return true
+}
+
+function submitS10() {
+  const entries = s10Adjustments.map((adjustment) => ({
+    id: adjustment.id,
+    user_id: adjustment.user_id,
+    project_id: adjustment.project_id,
+    original_month: adjustment.original_month,
+    applied_month: adjustment.applied_month,
+    adjustment_amount: Number(adjustment.adjustment_amount) || 0,
+    memo: adjustment.memo
+  }))
+  const deleted_ids = [...s10DeletedIds]
+
+  s10State.processing = true
+  suppressBeforeVisitGuard = true
+  clearErrors('s10')
+
+  router.post('/billing_adjustments/bulk_sync', {
+    entries,
+    deleted_ids
+  }, {
+    preserveScroll: true,
+    preserveState: true,
+    onSuccess: () => {
+      s10Edited.value = false
+      s10DeletedIds.splice(0, s10DeletedIds.length)
+      clearErrors('s10')
+      closeS10Modal(true)
+      persistBillingAdjustmentsMirror()
+    },
+    onError: (serverErrors) => {
+      errors.s10 = firstInertiaError(serverErrors, 'billing_adjustment') || firstInertiaError(serverErrors, 'entries') || 'S10を保存できませんでした。'
+      applyS10ServerErrors(serverErrors)
+    },
+    onFinish: () => {
+      s10State.processing = false
+      suppressBeforeVisitGuard = false
+    }
+  })
 }
 
 function validateSection(section: string) {
@@ -4070,16 +4654,7 @@ function validateSection(section: string) {
     return true
   }
   if (section === 's10') {
-    let ok = true
-    adjustments.forEach((a, idx) => {
-      if (!a.userId) { errors[`s10.${idx}.userId`] = '対象メンバーは必須です'; ok = false }
-      if (!a.projectId) { errors[`s10.${idx}.projectId`] = '対象案件は必須です'; ok = false }
-      if (!a.fromMonth) { errors[`s10.${idx}.fromMonth`] = '元の月は必須です'; ok = false }
-      if (!a.toMonth) { errors[`s10.${idx}.toMonth`] = '反映月は必須です'; ok = false }
-      if (!a.memo) { errors[`s10.${idx}.memo`] = 'メモは必須です'; ok = false }
-      if (Number.isNaN(Number(a.amount))) { errors[`s10.${idx}.amount`] = '調整金額は数値で入力してください'; ok = false }
-    })
-    return ok
+    return validateS10BeforeSubmit()
   }
   return true
 }
@@ -4104,7 +4679,8 @@ function saveSection(section: string) {
     return
   }
   if (section === 's10') {
-    persistBillingAdjustments()
+    void submitS10()
+    return
   }
   showToast('success', `${section.toUpperCase()} を保存しました`)
   dirty.value = false
@@ -4326,7 +4902,6 @@ const beforeUnload = (event: BeforeUnloadEvent) => {
 let stopBeforeVisitListener: VoidFunction | null = null
 
 onMounted(() => {
-  loadBillingAdjustments()
   window.addEventListener('beforeunload', beforeUnload)
 
   stopBeforeVisitListener = router.on('before', (event) => {
@@ -4547,7 +5122,57 @@ watch(s9YearOptions, (years) => {
   }
 }, { immediate: true })
 
-watch([users, projects, adjustments], () => {
+watch(
+  () => props.billing_adjustments,
+  () => {
+    if (s10Edited.value && !s10State.processing) return
+    rebuildS10DraftAdjustments()
+  },
+  { deep: true }
+)
+
+watch(
+  () => ({
+    open: s10Modal.open,
+    local_id: s10Modal.local_id,
+    id: s10Modal.form.id,
+    user_id: s10Modal.form.user_id,
+    project_id: s10Modal.form.project_id,
+    original_month: s10Modal.form.original_month,
+    applied_month: s10Modal.form.applied_month,
+    adjustment_amount: Number(s10Modal.form.adjustment_amount) || 0,
+    memo: s10Modal.form.memo
+  }),
+  (state) => {
+    if (!state.open) {
+      s10ModalDirty.value = false
+      return
+    }
+    s10ModalDirty.value = buildS10ModalSnapshot() !== s10ModalSnapshot.value
+  },
+  { deep: true }
+)
+
+watch(
+  [() => s10Modal.form.original_month, () => s10Modal.form.adjustment_amount],
+  () => {
+    syncS10AutoMemo()
+  }
+)
+
+watch(s10YearOptions, (years) => {
+  if (s10YearFilter.value === 'all') return
+  const selectedYear = Number(s10YearFilter.value)
+  if (!Number.isInteger(selectedYear)) {
+    s10YearFilter.value = 'all'
+    return
+  }
+  if (!years.includes(selectedYear)) {
+    s10YearFilter.value = 'all'
+  }
+}, { immediate: true })
+
+watch([users, projects], () => {
   if (skipDirtyTracking) return
   markDirty()
 }, { deep: true })

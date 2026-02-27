@@ -27,8 +27,8 @@ class MasterControllerTest < ActionDispatch::IntegrationTest
     assert_includes project_keys, "can_hard_delete"
 
     ordered_names = projects.map { |project| project["name"] }
-    selected_names = ordered_names.select { |name| ["A Active", "Z Active", "B Inactive"].include?(name) }
-    assert_equal ["A Active", "Z Active", "B Inactive"], selected_names
+    selected_names = ordered_names.select { |name| [ "A Active", "Z Active", "B Inactive" ].include?(name) }
+    assert_equal [ "A Active", "Z Active", "B Inactive" ], selected_names
   end
 
   test "master includes project members props" do
@@ -149,7 +149,46 @@ class MasterControllerTest < ActionDispatch::IntegrationTest
     assert_equal "2026-02", response_row["work_month"]
     assert_equal "クラウド費用", response_row["description"]
     assert_equal 123_000, response_row["amount"]
-    assert_equal [active_project.id, closed_project.id].sort, response_row["project_ids"].sort
+    assert_equal [ active_project.id, closed_project.id ].sort, response_row["project_ids"].sort
+  end
+
+  test "master includes billing adjustments props" do
+    project = Project.create!(name: "S10案件", is_active: true)
+    user = User.create!(
+      name: "S10メンバー",
+      email: "master-s10-member@example.com",
+      password: "password123",
+      password_confirmation: "password123",
+      system_role: "member",
+      is_active: true
+    )
+    adjustment = BillingAdjustment.create!(
+      user: user,
+      project: project,
+      original_month: Date.new(2026, 1, 1),
+      applied_month: Date.new(2026, 2, 1),
+      adjustment_amount: -18_000,
+      memo: "1月分請求時間誤り修正 -18,000円"
+    )
+
+    get master_path, headers: { "X-Inertia" => "true" }
+
+    assert_response :success
+
+    payload = JSON.parse(response.body)
+    billing_adjustments = payload.dig("props", "billing_adjustments")
+    assert billing_adjustments.present?
+
+    response_row = billing_adjustments.find { |item| item["id"] == adjustment.id }
+    assert_not_nil response_row
+    assert_equal user.id, response_row["user_id"]
+    assert_equal project.id, response_row["project_id"]
+    assert_equal "2026-01", response_row["original_month"]
+    assert_equal "2026-02", response_row["applied_month"]
+    assert_equal(-18_000, response_row["adjustment_amount"])
+    assert_equal "1月分請求時間誤り修正 -18,000円", response_row["memo"]
+    assert response_row["created_at"].present?
+    assert response_row["updated_at"].present?
   end
 
   test "master includes s5 month keys and billing work logs props" do

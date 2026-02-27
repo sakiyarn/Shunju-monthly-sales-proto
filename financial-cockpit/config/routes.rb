@@ -19,6 +19,7 @@ Rails.application.routes.draw do
   end
   resources :project_members, only: %i[create update destroy]
   resources :directed_expenses, only: %i[create update destroy]
+  post "/billing_adjustments/bulk_sync", to: "billing_adjustments#bulk_sync"
   post "/billing_work_logs/bulk_upsert", to: "billing_work_logs#bulk_upsert"
   post "/monthly_business_days/bulk_upsert", to: "monthly_business_days#bulk_upsert"
   post "/staff_monthly_results/bulk_upsert", to: "staff_monthly_results#bulk_upsert"
