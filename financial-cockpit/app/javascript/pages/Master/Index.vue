@@ -797,11 +797,6 @@
         </table>
       </div>
 
-      <div class="master-s10-footer">
-        <button class="btn-save cursor-pointer" :disabled="s10State.processing || !s10Edited" @click="saveSection('s10')">
-          {{ s10Edited ? '保存（未保存あり）' : '保存' }}
-        </button>
-      </div>
     </section>
 
     <div v-if="toast.show" class="fixed right-4 top-20 rounded px-4 py-2 text-sm font-semibold" :class="toast.type === 'success' ? 'bg-green-600' : 'bg-red-600'">{{ toast.message }}</div>
@@ -4408,7 +4403,7 @@ function markS10Edited() {
 }
 
 function saveS10Modal() {
-  if (s10Modal.processing) return
+  if (s10Modal.processing || s10State.processing) return
   if (!validateS10Modal()) return
 
   const payload: S10DraftAdjustment = {
@@ -4431,11 +4426,12 @@ function saveS10Modal() {
   }
 
   markS10Edited()
-  closeS10Modal(true)
+  s10Modal.processing = true
+  submitS10()
 }
 
 function deleteS10FromModal() {
-  if (s10Modal.mode !== 'edit' || !s10Modal.local_id) return
+  if (s10Modal.mode !== 'edit' || !s10Modal.local_id || s10Modal.processing || s10State.processing) return
   if (!window.confirm('この請求調整を削除します。よろしいですか？')) return
 
   const index = s10Adjustments.findIndex((adjustment) => adjustment.local_id === s10Modal.local_id)
@@ -4445,12 +4441,19 @@ function deleteS10FromModal() {
   }
 
   const target = s10Adjustments[index]
-  if (target.id !== null && !s10DeletedIds.includes(target.id)) {
+  if (target.id === null) {
+    s10Adjustments.splice(index, 1)
+    markS10Edited()
+    closeS10Modal(true)
+    return
+  }
+
+  if (!s10DeletedIds.includes(target.id)) {
     s10DeletedIds.push(target.id)
   }
-  s10Adjustments.splice(index, 1)
   markS10Edited()
-  closeS10Modal(true)
+  s10Modal.processing = true
+  submitS10()
 }
 
 const toPersistedBillingAdjustments = (): PersistedBillingAdjustment[] => {
@@ -4495,16 +4498,19 @@ function validateS10BeforeSubmit() {
 }
 
 function submitS10() {
-  const entries = s10Adjustments.map((adjustment) => ({
-    id: adjustment.id,
-    user_id: adjustment.user_id,
-    project_id: adjustment.project_id,
-    original_month: adjustment.original_month,
-    applied_month: adjustment.applied_month,
-    adjustment_amount: Number(adjustment.adjustment_amount) || 0,
-    memo: adjustment.memo
-  }))
   const deleted_ids = [...s10DeletedIds]
+  const deletedIdSet = new Set(deleted_ids)
+  const entries = s10Adjustments
+    .filter((adjustment) => adjustment.id === null || !deletedIdSet.has(adjustment.id))
+    .map((adjustment) => ({
+      id: adjustment.id,
+      user_id: adjustment.user_id,
+      project_id: adjustment.project_id,
+      original_month: adjustment.original_month,
+      applied_month: adjustment.applied_month,
+      adjustment_amount: Number(adjustment.adjustment_amount) || 0,
+      memo: adjustment.memo
+    }))
 
   s10State.processing = true
   suppressBeforeVisitGuard = true
