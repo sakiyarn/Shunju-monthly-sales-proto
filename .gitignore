@@ -1,10 +1,45 @@
-node_modules/
-dist/
+# Ignore bundler config.
+/.bundle
 
-# TypeScript build cache
+# Ignore all environment files (except templates).
+/.env*
+!/.env*.erb
+
+# Ignore all logfiles and tempfiles.
+/log/*
+/tmp/*
+!/log/.keep
+!/tmp/.keep
+
+# Ignore pidfiles, but keep the directory.
+/tmp/pids/*
+!/tmp/pids/
+!/tmp/pids/.keep
+
+# Ignore storage (uploaded files in development and any SQLite databases).
+/storage/*
+!/storage/.keep
+/tmp/storage/*
+!/tmp/storage/
+!/tmp/storage/.keep
+
+/public/assets
+/public/vite*
+
+# Ignore master key for decrypting credentials and more.
+/config/master.key
+
+# Root app dependencies and generated files.
+/node_modules
+*.local
 *.tsbuildinfo
 
+# Legacy demo workspace.
+/legacy-demo/node_modules
+/legacy-demo/dist
+/legacy-demo/*.tsbuildinfo
+
 # OS / editor
-.DS_Store
-.idea/
-.vscode/
+/.DS_Store
+/.idea/
+/.vscode/

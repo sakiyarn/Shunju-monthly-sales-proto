@@ -1,4 +1,5 @@
 {
+  "name": "s-proto-monthly-sales-v1",
   "private": true,
   "type": "module",
   "devDependencies": {
@@ -22,6 +23,9 @@
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
-    "check": "vue-tsc -p tsconfig.app.json && tsc -p tsconfig.node.json"
+    "check": "vue-tsc -p tsconfig.app.json && tsc -p tsconfig.node.json",
+    "legacy:dev": "npm --prefix legacy-demo run dev",
+    "legacy:build": "npm --prefix legacy-demo run build",
+    "legacy:preview": "npm --prefix legacy-demo run preview"
   }
 }
