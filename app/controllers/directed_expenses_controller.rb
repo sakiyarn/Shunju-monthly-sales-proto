@@ -84,7 +84,7 @@ class DirectedExpensesController < ApplicationController
       work_month: parse_month(params_payload[:work_month]),
       description: parse_description(params_payload[:description]),
       amount: parse_amount(params_payload[:amount]),
-      project_ids: parse_project_ids(params_payload[:project_ids], allow_empty: allow_empty_projects)
+      project_ids: parse_project_ids(params_payload[:project_ids] || [], allow_empty: allow_empty_projects)
     }
   rescue ActionController::ParameterMissing
     raise ArgumentError, "保存データの形式が不正です"
@@ -118,8 +118,11 @@ class DirectedExpensesController < ApplicationController
   def parse_project_ids(value, allow_empty:)
     raise ArgumentError, "対象案件の形式が不正です" unless value.is_a?(Array)
 
-    project_ids = value.map do |project_id|
-      Integer(project_id)
+    project_ids = value.each_with_object([]) do |project_id, normalized_ids|
+      normalized = project_id.is_a?(String) ? project_id.strip : project_id
+      next if normalized.nil? || normalized == ""
+
+      normalized_ids << Integer(normalized)
     rescue ArgumentError, TypeError
       raise ArgumentError, "対象案件の形式が不正です"
     end

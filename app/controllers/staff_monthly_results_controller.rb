@@ -12,8 +12,8 @@ class StaffMonthlyResultsController < ApplicationController
   private
 
   def perform_bulk_upsert(editable_user_ids:, notice_message:)
-    entries = params[:entries]
-    return redirect_with_errors(entries: "保存対象データがありません") unless entries.is_a?(Array) && entries.present?
+    entries = normalize_entries_param(params[:entries])
+    return redirect_with_errors(entries: "保存対象データがありません") if entries.empty?
 
     normalized_entries = normalize_entries(entries)
     return redirect_with_errors(entries: "同じメンバー・月のデータが重複しています") if duplicate_entries?(normalized_entries)
@@ -61,6 +61,27 @@ class StaffMonthlyResultsController < ApplicationController
 
   def editable_officer_user_ids
     User.joins(:role).where(is_active: true, roles: { name: "代表" }).pluck(:id).to_set
+  end
+
+  def normalize_entries_param(entries)
+    return [] if entries.nil?
+    raise ArgumentError, "保存データの形式が不正です" unless entries.is_a?(Array)
+
+    entries.each_with_object([]) do |entry, normalized_entries|
+      next if entry.nil?
+
+      if entry.is_a?(String)
+        next if entry.strip == ""
+
+        raise ArgumentError, "保存データの形式が不正です"
+      end
+
+      unless entry.is_a?(Hash) || entry.is_a?(ActionController::Parameters)
+        raise ArgumentError, "保存データの形式が不正です"
+      end
+
+      normalized_entries << entry
+    end
   end
 
   def normalize_entries(entries)

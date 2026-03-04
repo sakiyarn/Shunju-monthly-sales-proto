@@ -13,3 +13,16 @@ module ActiveSupport
     # Add more helper methods to be used by all tests here...
   end
 end
+
+module InertiaTestHelper
+  def inertia_headers
+    {
+      "X-Inertia" => "true",
+      "X-Inertia-Version" => ViteRuby.digest.to_s
+    }
+  end
+end
+
+class ActionDispatch::IntegrationTest
+  include InertiaTestHelper
+end

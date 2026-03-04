@@ -2,8 +2,8 @@
 
 class MonthlyBusinessDaysController < ApplicationController
   def bulk_upsert
-    entries = params[:entries]
-    return redirect_with_errors(entries: "保存対象データがありません") unless entries.is_a?(Array) && entries.present?
+    entries = normalize_entries_param(params[:entries])
+    return redirect_with_errors(entries: "保存対象データがありません") if entries.empty?
 
     normalized_entries = normalize_entries(entries)
     return redirect_with_errors(entries: "同じ月のデータが重複しています") if duplicate_entries?(normalized_entries)
@@ -36,6 +36,27 @@ class MonthlyBusinessDaysController < ApplicationController
   end
 
   private
+
+  def normalize_entries_param(entries)
+    return [] if entries.nil?
+    raise ArgumentError, "保存データの形式が不正です" unless entries.is_a?(Array)
+
+    entries.each_with_object([]) do |entry, normalized_entries|
+      next if entry.nil?
+
+      if entry.is_a?(String)
+        next if entry.strip == ""
+
+        raise ArgumentError, "保存データの形式が不正です"
+      end
+
+      unless entry.is_a?(Hash) || entry.is_a?(ActionController::Parameters)
+        raise ArgumentError, "保存データの形式が不正です"
+      end
+
+      normalized_entries << entry
+    end
+  end
 
   def normalize_entries(entries)
     entries.map do |entry|

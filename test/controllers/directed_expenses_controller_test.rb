@@ -46,6 +46,20 @@ class DirectedExpensesControllerTest < ActionDispatch::IntegrationTest
     assert_redirected_to master_path
   end
 
+  test "create rejects missing project_ids key" do
+    assert_no_difference("DirectedExpense.count") do
+      post directed_expenses_path, params: {
+        directed_expense: {
+          work_month: "2026-01",
+          description: "AWS利用料",
+          amount: 120_000
+        }
+      }
+    end
+
+    assert_redirected_to master_path
+  end
+
   test "create rejects duplicated project_ids" do
     assert_no_difference("DirectedExpense.count") do
       post directed_expenses_path, params: {
@@ -157,6 +171,23 @@ class DirectedExpensesControllerTest < ActionDispatch::IntegrationTest
 
     assert_redirected_to master_path
     assert_equal Date.new(2026, 3, 1), expense.reload.work_month
+    assert_equal [@closed_project.id], expense.directed_expense_assignments.pluck(:project_id)
+  end
+
+  test "update accepts missing project_ids key when closed assignment exists" do
+    expense = DirectedExpense.create!(work_month: Date.new(2026, 1, 1), description: "初期経費", amount: 30_000)
+    DirectedExpenseAssignment.create!(directed_expense: expense, project: @closed_project)
+
+    patch directed_expense_path(expense), params: {
+      directed_expense: {
+        work_month: "2026-04",
+        description: "終了案件のみ保持",
+        amount: 66_000
+      }
+    }
+
+    assert_redirected_to master_path
+    assert_equal Date.new(2026, 4, 1), expense.reload.work_month
     assert_equal [@closed_project.id], expense.directed_expense_assignments.pluck(:project_id)
   end
 

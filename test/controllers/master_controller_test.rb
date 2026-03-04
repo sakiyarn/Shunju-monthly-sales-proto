@@ -8,7 +8,7 @@ class MasterControllerTest < ActionDispatch::IntegrationTest
     Project.create!(name: "A Active", is_active: true)
     Project.create!(name: "B Inactive", is_active: false)
 
-    get master_path, headers: { "X-Inertia" => "true" }
+    get master_path, headers: inertia_headers
 
     assert_response :success
 
@@ -43,7 +43,7 @@ class MasterControllerTest < ActionDispatch::IntegrationTest
     )
     project_member = ProjectMember.create!(project: project, user: user, default_billing_rate: 7_200)
 
-    get master_path, headers: { "X-Inertia" => "true" }
+    get master_path, headers: inertia_headers
 
     assert_response :success
 
@@ -67,7 +67,7 @@ class MasterControllerTest < ActionDispatch::IntegrationTest
       accounting_operating_profit: 744_918
     )
 
-    get master_path, headers: { "X-Inertia" => "true" }
+    get master_path, headers: inertia_headers
 
     assert_response :success
 
@@ -93,7 +93,7 @@ class MasterControllerTest < ActionDispatch::IntegrationTest
     )
     history = MonthlyAccountingDataHistory.capture!(event_type: "import")
 
-    get master_path, headers: { "X-Inertia" => "true" }
+    get master_path, headers: inertia_headers
 
     assert_response :success
 
@@ -112,7 +112,7 @@ class MasterControllerTest < ActionDispatch::IntegrationTest
       business_days: 19
     )
 
-    get master_path, headers: { "X-Inertia" => "true" }
+    get master_path, headers: inertia_headers
 
     assert_response :success
 
@@ -136,7 +136,7 @@ class MasterControllerTest < ActionDispatch::IntegrationTest
     DirectedExpenseAssignment.create!(directed_expense: expense, project: active_project)
     DirectedExpenseAssignment.create!(directed_expense: expense, project: closed_project)
 
-    get master_path, headers: { "X-Inertia" => "true" }
+    get master_path, headers: inertia_headers
 
     assert_response :success
 
@@ -171,7 +171,7 @@ class MasterControllerTest < ActionDispatch::IntegrationTest
       memo: "1月分請求時間誤り修正 -18,000円"
     )
 
-    get master_path, headers: { "X-Inertia" => "true" }
+    get master_path, headers: inertia_headers
 
     assert_response :success
 
@@ -210,7 +210,7 @@ class MasterControllerTest < ActionDispatch::IntegrationTest
       billing_rate: 8_000
     )
 
-    get master_path, headers: { "X-Inertia" => "true" }
+    get master_path, headers: inertia_headers
 
     assert_response :success
 
@@ -281,7 +281,7 @@ class MasterControllerTest < ActionDispatch::IntegrationTest
       bonus: 100_000
     )
 
-    get master_path, headers: { "X-Inertia" => "true" }
+    get master_path, headers: inertia_headers
 
     assert_response :success
 
@@ -378,7 +378,7 @@ class MasterControllerTest < ActionDispatch::IntegrationTest
       bonus: 20_000
     )
 
-    get master_path, headers: { "X-Inertia" => "true" }
+    get master_path, headers: inertia_headers
 
     assert_response :success
 
