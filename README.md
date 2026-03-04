@@ -14,7 +14,7 @@ The repository root now hosts the primary Rails + Inertia application for the mo
 - Type check frontend code: `npm run check`
 - Build frontend assets: `npm run build`
 - Run Ruby style checks: `bin/rubocop`
-- Run Rails security scan: `bin/brakeman`
+- Run Rails security scan: `bundle exec brakeman --no-pager`
 - Run tests: `RAILS_ENV=test bin/rails db:test:prepare test test:system`
 
 ## Legacy Demo
