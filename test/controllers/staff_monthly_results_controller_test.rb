@@ -95,7 +95,7 @@ class StaffMonthlyResultsControllerTest < ActionDispatch::IntegrationTest
 
   test "bulk upsert rejects blank entries payload" do
     assert_no_difference("StaffMonthlyResult.count") do
-      post "/staff_monthly_results/bulk_upsert", params: { entries: ["", "   ", nil] }
+      post "/staff_monthly_results/bulk_upsert", params: { entries: [ "", "   ", nil ] }
     end
 
     assert_redirected_to master_path
@@ -244,7 +244,7 @@ class StaffMonthlyResultsControllerTest < ActionDispatch::IntegrationTest
 
   test "bulk upsert officers rejects blank entries payload" do
     assert_no_difference("StaffMonthlyResult.count") do
-      post "/staff_monthly_results/bulk_upsert_officers", params: { entries: ["", "   ", nil] }
+      post "/staff_monthly_results/bulk_upsert_officers", params: { entries: [ "", "   ", nil ] }
     end
 
     assert_redirected_to master_path

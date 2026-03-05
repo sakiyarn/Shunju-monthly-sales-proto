@@ -80,7 +80,7 @@ class BillingWorkLogsControllerTest < ActionDispatch::IntegrationTest
     assert_no_difference("BillingWorkLog.count") do
       post "/billing_work_logs/bulk_upsert", params: {
         project_id: @active_project.id,
-        entries: ["", "   ", nil]
+        entries: [ "", "   ", nil ]
       }
     end
 

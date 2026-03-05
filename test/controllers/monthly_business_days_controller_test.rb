@@ -46,7 +46,7 @@ class MonthlyBusinessDaysControllerTest < ActionDispatch::IntegrationTest
   test "bulk upsert rejects blank entries payload" do
     assert_no_difference("MonthlyBusinessDay.count") do
       post "/monthly_business_days/bulk_upsert", params: {
-        entries: ["", "   ", nil]
+        entries: [ "", "   ", nil ]
       }
     end
 
