@@ -1,4 +1,5 @@
 source "https://rubygems.org"
+ruby "4.0.1"
 
 # Bundle edge Rails instead: gem "rails", github: "rails/rails", branch: "main"
 gem "rails", "~> 7.2.3"
@@ -11,6 +12,8 @@ gem "sqlite3", ">= 1.4"
 gem "puma", ">= 5.0"
 # Build JSON APIs with ease [https://github.com/rails/jbuilder]
 gem "jbuilder"
+# Ruby 3.4+ no longer bundles csv as a default gem.
+gem "csv"
 # Use Redis adapter to run Action Cable in production
 # gem "redis", ">= 4.0.1"
 
