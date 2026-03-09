@@ -40,17 +40,21 @@ class MasterController < InertiaController
       )
     end
   end
-
+ 
+  # 役職名（代表、三千人将、百人将など）を抽出して表示する
   def roles_payload
     Role.order(:display_order).as_json(only: %i[id name])
   end
 
+  # プロジェクト一覧の情報を取得する
   def projects_payload
-    project_member_counts = ProjectMember.group(:project_id).count
-    billing_work_log_counts = BillingWorkLog.group(:project_id).count
-    directed_expense_assignment_counts = DirectedExpenseAssignment.group(:project_id).count
-    billing_adjustment_counts = BillingAdjustment.group(:project_id).count
+    # プロジェクトに関連するレコード数をカウントする
+    project_member_counts = ProjectMember.group(:project_id).count #参画メンバーの記録を数える
+    billing_work_log_counts = BillingWorkLog.group(:project_id).count #請求作業の記録を数える
+    directed_expense_assignment_counts = DirectedExpenseAssignment.group(:project_id).count #経費按分の記録を数える
+    billing_adjustment_counts = BillingAdjustment.group(:project_id).count #請求調整の記録を数える
 
+    
     Project.ordered_for_master.map do |project|
       related_records_count = project_member_counts.fetch(project.id, 0) +
                               billing_work_log_counts.fetch(project.id, 0) +

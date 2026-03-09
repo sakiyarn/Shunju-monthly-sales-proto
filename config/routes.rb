@@ -4,7 +4,8 @@ Rails.application.routes.draw do
   root "pages#project_analysis"
   get "/dashboard", to: "pages#dashboard"
   get "/master", to: "master#index", as: :master
-  get "/master-data", to: "master#index"
+  # master-dataは削除してもいいかも
+  # get "/master-data", to: "master#index"
   resources :users, only: %i[create update destroy] do
     member do
       patch :activate
