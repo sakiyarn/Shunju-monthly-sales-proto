@@ -40,7 +40,7 @@ group :development, :test do
   gem "brakeman", require: false
 
   # Rails 7.2 test helpers are not yet compatible with Minitest 6.x.
-  gem "minitest", "< 6"
+  gem "minitest", "< 7"
 
   # Omakase Ruby styling [https://github.com/rails/rubocop-rails-omakase/]
   gem "rubocop-rails-omakase", require: false
