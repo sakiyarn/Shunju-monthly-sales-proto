@@ -6,6 +6,11 @@ class PagesController < InertiaController
   end
 
   def dashboard
-    render inertia: 'Dashboard/Index'
+    projects = Project
+      .ordered_for_master
+      .where(is_active: true)
+      .as_json(only: %i[id name is_active display_order])
+
+    render inertia: 'Dashboard/Index', props: { projects: projects }
   end
 end
