@@ -368,8 +368,9 @@ import * as echarts from 'echarts'
 import 'ag-grid-community/styles/ag-grid.css'
 import 'ag-grid-community/styles/ag-theme-quartz.css'
 
-defineProps<{
+const props = defineProps<{
   initialData?: Record<string, unknown>
+  projects: Array<{ id: number; name: string; is_active: boolean; display_order: number }>
 }>()
 
 type DashboardTabId = 'workHours' | 'budget' | 'memberSales' | 'memberChart' | 'profitTracker'
@@ -508,7 +509,10 @@ const seededInt = (seed: string, min: number, max: number) => {
   return min + normalized
 }
 
-const projects = ['案件001', '案件002', '案件003']
+// ここをprops.projects.map(p => p.name)に置き換える予定
+// 型定義は実行前にミス検知するために書く。propsは実データ本体。
+const projectNames = props.projects.map((p) => p.name)
+const projects = projectNames
 const members = ['三千人将A', '千人将A', '三百人将A', '百人将A', '什長A', '什長B', '什長C', '什長D']
 const executives = ['代表A', '代表B']
 const allPeople = [...members, ...executives]
