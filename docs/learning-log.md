@@ -77,11 +77,27 @@
   - routes -> controller -> defineProps の順で読む
   - スコープ外変更はコミットに入れない
 
-### S1(Dashboard案件連動)
+### S1（Dashboardメンバーフィルタ連動）
 #### 開始
-- 日付: 2026-03-010
+- 日付: 2026-03-12
 - 対象セクション: S1
-- ブランチ: codex/master-s1-users-crud
-- 目的: Dashboardにスタッフが連動するように実装
-- display_orderガードは既存実装でOKだった
+- ブランチ: codex/dashboard-s1-users-linkage
+- 目的: Dashboardの固定members配列をS1 usersデータ連動へ置換
+
+#### 終了
+- できるようになったこと:
+  - PagesControllerでusersをpropsとして渡し、DashboardでdefinePropsで受け取る流れを実装できた
+  - members / executives / allPeople の役割を理解して、重複を避ける実装にできた
+  - CIエラー時に原因特定し、amend後のforce-with-lease pushまで対応できた
+- つまずいたこと:
+  - filterをサーバー側/フロント側どちらで使うべきか
+  - `=` と `===` の違い
+  - GitHub上のコミット名修正がローカルのみで止まる点
+- 解決できたこと:
+  - users props追加（projectsと同じ方針で実装）
+  - メンバーフィルタ件数11件、重複なし、ON/OFF正常を確認
+  - `git push --force-with-lease` でPR履歴を正しく更新
+- 次回メモ:
+  - データ取得ルールはController、表示分類はVueで分担する
+  - 学習メモはコード内コメントではなくlearning-logへ記録する
 
