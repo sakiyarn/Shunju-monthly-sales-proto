@@ -1,5 +1,7 @@
 # 学習ログ（Master移植）
 
+参照: `docs/dashboard-linkage-scope.md`（Master実装済み / Dashboard連動のみ）
+
 ## 使い方
 - 1セクションごとに「開始時」と「終了時」を1回ずつ記録
 - 1回5分タスクで進め、詰まった点は短く残す
@@ -74,3 +76,12 @@
 - 次回メモ:
   - routes -> controller -> defineProps の順で読む
   - スコープ外変更はコミットに入れない
+
+### S1(Dashboard案件連動)
+#### 開始
+- 日付: 2026-03-010
+- 対象セクション: S1
+- ブランチ: codex/master-s1-users-crud
+- 目的: Dashboardにスタッフが連動するように実装
+- display_orderガードは既存実装でOKだった
+

@@ -2909,7 +2909,7 @@ function firstValidationMessage(validationErrors: Record<string, string | string
 function updateDisplayOrder(user: UserRecord, event: Event) {
   const target = event.target as HTMLInputElement
   const nextDisplayOrder = Number(target.value)
-
+  
   if (!Number.isInteger(nextDisplayOrder) || nextDisplayOrder < 1 || nextDisplayOrder > 9999) {
     target.value = String(user.display_order)
     showToast('error', '並び順は1〜9999の整数で入力してください')
