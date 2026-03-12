@@ -10,7 +10,15 @@ class PagesController < InertiaController
       .ordered_for_master
       .where(is_active: true)
       .as_json(only: %i[id name is_active display_order])
+    
+    users = User
+      .ordered_for_master
+      .where(is_active: true)
+      .as_json(only: %i[id name display_name is_active system_role])
 
-    render inertia: 'Dashboard/Index', props: { projects: projects }
+    render inertia: 'Dashboard/Index', props: {
+      projects: projects,
+      users: users
+    }
   end
 end

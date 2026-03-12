@@ -9,14 +9,8 @@
       </header>
 
       <nav class="tab-nav" aria-label="ダッシュボードタブ">
-        <button
-          v-for="tab in tabs"
-          :key="tab.id"
-          class="tab-btn"
-          :class="{ 'tab-btn-active': activeTab === tab.id }"
-          type="button"
-          @click="activeTab = tab.id"
-        >
+        <button v-for="tab in tabs" :key="tab.id" class="tab-btn" :class="{ 'tab-btn-active': activeTab === tab.id }"
+          type="button" @click="activeTab = tab.id">
           {{ tab.label }}
         </button>
       </nav>
@@ -27,14 +21,10 @@
             <div class="work-hours-filter-group">
               <span class="work-hours-filter-label">案件</span>
               <div class="work-hours-filter-buttons">
-                <button
-                  v-for="projectName in projects"
-                  :key="`work-filter-${projectName}`"
+                <button v-for="projectName in projects" :key="`work-filter-${projectName}`"
                   class="work-hours-filter-btn"
-                  :class="{ 'work-hours-filter-btn-active': isWorkHoursProjectVisible(projectName) }"
-                  type="button"
-                  @click="toggleWorkHoursProject(projectName)"
-                >
+                  :class="{ 'work-hours-filter-btn-active': isWorkHoursProjectVisible(projectName) }" type="button"
+                  @click="toggleWorkHoursProject(projectName)">
                   {{ projectName }}
                 </button>
               </div>
@@ -43,14 +33,10 @@
             <div class="work-hours-filter-group">
               <span class="work-hours-filter-label">メンバー</span>
               <div class="work-hours-filter-buttons">
-                <button
-                  v-for="memberName in members"
-                  :key="`work-member-filter-${memberName}`"
+                <button v-for="memberName in members" :key="`work-member-filter-${memberName}`"
                   class="work-hours-filter-btn work-hours-member-filter-btn"
                   :class="{ 'work-hours-member-filter-btn-active': selectedWorkHoursMember === memberName }"
-                  type="button"
-                  @click="toggleWorkHoursMember(memberName)"
-                >
+                  type="button" @click="toggleWorkHoursMember(memberName)">
                   {{ memberName }}
                 </button>
               </div>
@@ -58,23 +44,14 @@
           </div>
           <div ref="workHoursScaleMenuWrapRef" class="work-hours-scale-control">
             <span>表示倍率</span>
-            <button
-              class="work-hours-scale-trigger"
-              type="button"
-              aria-label="表示倍率選択"
-              @click="workHoursScaleMenuOpen = !workHoursScaleMenuOpen"
-            >
+            <button class="work-hours-scale-trigger" type="button" aria-label="表示倍率選択"
+              @click="workHoursScaleMenuOpen = !workHoursScaleMenuOpen">
               {{ workHoursScale }}%
             </button>
             <div v-if="workHoursScaleMenuOpen" class="work-hours-scale-menu">
-              <button
-                v-for="scale in workHoursScaleOptions"
-                :key="`scale-${scale}`"
-                class="work-hours-scale-option"
-                :class="{ 'work-hours-scale-option-active': workHoursScale === scale }"
-                type="button"
-                @click="setWorkHoursScale(scale)"
-              >
+              <button v-for="scale in workHoursScaleOptions" :key="`scale-${scale}`" class="work-hours-scale-option"
+                :class="{ 'work-hours-scale-option-active': workHoursScale === scale }" type="button"
+                @click="setWorkHoursScale(scale)">
                 {{ scale }}%
               </button>
             </div>
@@ -83,17 +60,9 @@
         <div class="work-hours-stage">
           <div class="work-hours-zoom" :style="workHoursScaleStyle">
             <div class="ag-theme-quartz grid-shell grid-shell-hours">
-              <AgGridVue
-                class="h-full w-full work-hours-grid"
-                :columnDefs="workHoursColumnDefs"
-                :rowData="filteredWorkHoursRows"
-                :defaultColDef="readOnlyColDef"
-                :animateRows="false"
-                :rowHeight="34"
-                :headerHeight="34"
-                :groupHeaderHeight="34"
-                :getRowClass="getWorkHoursRowClass"
-              />
+              <AgGridVue class="h-full w-full work-hours-grid" :columnDefs="workHoursColumnDefs"
+                :rowData="filteredWorkHoursRows" :defaultColDef="readOnlyColDef" :animateRows="false" :rowHeight="34"
+                :headerHeight="34" :groupHeaderHeight="34" :getRowClass="getWorkHoursRowClass" />
             </div>
           </div>
         </div>
@@ -104,14 +73,8 @@
           <h2>予算収支表</h2>
         </div>
         <div class="ag-theme-quartz grid-shell grid-shell-md">
-          <AgGridVue
-            class="h-full w-full"
-            :columnDefs="budgetColumnDefs"
-            :rowData="budgetRows"
-            :defaultColDef="readOnlyColDef"
-            :animateRows="false"
-            :getRowClass="getBudgetRowClass"
-          />
+          <AgGridVue class="h-full w-full" :columnDefs="budgetColumnDefs" :rowData="budgetRows"
+            :defaultColDef="readOnlyColDef" :animateRows="false" :getRowClass="getBudgetRowClass" />
         </div>
       </section>
 
@@ -122,14 +85,10 @@
             <div class="member-sales-filter-group" aria-label="メンバー別売上内訳のメンバーフィルタ">
               <span class="work-hours-filter-label">メンバー</span>
               <div class="member-sales-filter-buttons">
-                <button
-                  v-for="memberName in allPeople"
-                  :key="`member-sales-filter-${memberName}`"
+                <button v-for="memberName in allPeople" :key="`member-sales-filter-${memberName}`"
                   class="work-hours-filter-btn"
                   :class="{ 'work-hours-member-filter-btn-active': isMemberSalesMemberSelected(memberName) }"
-                  type="button"
-                  @click="toggleMemberSalesMember(memberName)"
-                >
+                  type="button" @click="toggleMemberSalesMember(memberName)">
                   {{ memberName }}
                 </button>
               </div>
@@ -138,14 +97,10 @@
             <div class="member-sales-scale-control" aria-label="メンバー別売上内訳の表示倍率">
               <span>表示倍率</span>
               <div class="member-sales-scale-buttons">
-                <button
-                  v-for="scale in memberSalesScaleOptions"
-                  :key="`member-sales-scale-${scale}`"
+                <button v-for="scale in memberSalesScaleOptions" :key="`member-sales-scale-${scale}`"
                   class="member-sales-scale-btn"
-                  :class="{ 'member-sales-scale-btn-active': memberSalesScale === scale }"
-                  type="button"
-                  @click="setMemberSalesScale(scale)"
-                >
+                  :class="{ 'member-sales-scale-btn-active': memberSalesScale === scale }" type="button"
+                  @click="setMemberSalesScale(scale)">
                   {{ scale }}%
                 </button>
               </div>
@@ -155,15 +110,9 @@
         <div class="member-sales-stage">
           <div class="member-sales-zoom" :style="memberSalesScaleStyle">
             <div class="ag-theme-quartz grid-shell grid-shell-member-sales">
-              <AgGridVue
-                class="h-full w-full"
-                :columnDefs="memberSalesColumnDefs"
-                :rowData="filteredMemberSalesRows"
-                :defaultColDef="readOnlyColDef"
-                :animateRows="false"
-                :tooltipShowDelay="120"
-                :getRowClass="getMemberSalesRowClass"
-              />
+              <AgGridVue class="h-full w-full" :columnDefs="memberSalesColumnDefs" :rowData="filteredMemberSalesRows"
+                :defaultColDef="readOnlyColDef" :animateRows="false" :tooltipShowDelay="120"
+                :getRowClass="getMemberSalesRowClass" />
             </div>
           </div>
         </div>
@@ -184,28 +133,16 @@
                   <option value="custom">月範囲で表示</option>
                 </select>
 
-                <select
-                  v-if="memberChartRangeMode === 'period'"
-                  v-model.number="selectedMemberChartPeriod"
-                  class="period-select"
-                  aria-label="期選択"
-                >
-                  <option
-                    v-for="option in memberChartPeriodOptions"
-                    :key="`member-chart-period-${option.value}`"
-                    :value="option.value"
-                    :disabled="!option.available"
-                  >
+                <select v-if="memberChartRangeMode === 'period'" v-model.number="selectedMemberChartPeriod"
+                  class="period-select" aria-label="期選択">
+                  <option v-for="option in memberChartPeriodOptions" :key="`member-chart-period-${option.value}`"
+                    :value="option.value" :disabled="!option.available">
                     {{ option.label }}{{ option.available ? '' : '（データなし）' }}
                   </option>
                 </select>
 
-                <select
-                  v-else-if="memberChartRangeMode === 'year'"
-                  v-model.number="selectedMemberChartYear"
-                  class="period-select"
-                  aria-label="年度選択"
-                >
+                <select v-else-if="memberChartRangeMode === 'year'" v-model.number="selectedMemberChartYear"
+                  class="period-select" aria-label="年度選択">
                   <option v-for="year in memberChartYearOptions" :key="`member-chart-year-${year}`" :value="year">
                     {{ year }}年度
                   </option>
@@ -285,14 +222,9 @@
           </div>
 
           <div class="tracker-period-controls" aria-label="半期切替">
-            <button
-              v-for="period in halfYearPeriods"
-              :key="`tracker-period-${period.id}`"
-              class="tracker-period-btn"
-              :class="{ 'tracker-period-btn-active': selectedHalfYearPeriodId === period.id }"
-              type="button"
-              @click="selectedHalfYearPeriodId = period.id"
-            >
+            <button v-for="period in halfYearPeriods" :key="`tracker-period-${period.id}`" class="tracker-period-btn"
+              :class="{ 'tracker-period-btn-active': selectedHalfYearPeriodId === period.id }" type="button"
+              @click="selectedHalfYearPeriodId = period.id">
               {{ period.label }}
             </button>
           </div>
@@ -371,6 +303,7 @@ import 'ag-grid-community/styles/ag-theme-quartz.css'
 const props = defineProps<{
   initialData?: Record<string, unknown>
   projects: Array<{ id: number; name: string; is_active: boolean; display_order: number }>
+  users: Array<{ id: number; name: string; display_name: string; is_active: boolean; system_role: string }>
 }>()
 
 type DashboardTabId = 'workHours' | 'budget' | 'memberSales' | 'memberChart' | 'profitTracker'
@@ -509,13 +442,16 @@ const seededInt = (seed: string, min: number, max: number) => {
   return min + normalized
 }
 
-// ここをprops.projects.map(p => p.name)に置き換える予定
-// 型定義は実行前にミス検知するために書く。propsは実データ本体。
 const projectNames = props.projects.map((p) => p.name)
 const projects = projectNames
-const members = ['三千人将A', '千人将A', '三百人将A', '百人将A', '什長A', '什長B', '什長C', '什長D']
-const executives = ['代表A', '代表B']
-const allPeople = [...members, ...executives]
+const members = props.users
+  .map((user) => user.display_name || user.name)
+
+const executives = props.users
+  .filter((user) => user.system_role === 'admin')
+  .map((user) => user.display_name || user.name)
+
+const allPeople = [...new Set([...members, ...executives])]
 const allMonthIndexByKey = new Map(allMonths.map((month, index) => [month.key, index]))
 const memberRoleOrder = ['代表A', '代表B', '三千人将A', '千人将A', '三百人将A', '百人将A', '什長A', '什長B', '什長C', '什長D']
 const memberRoleOrderIndex = new Map(memberRoleOrder.map((name, index) => [name, index]))
