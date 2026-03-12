@@ -10,7 +10,7 @@ class PagesController < InertiaController
       .ordered_for_master
       .where(is_active: true)
       .as_json(only: %i[id name is_active display_order])
-    
+
     users = User
       .ordered_for_master
       .where(is_active: true)
